@@ -9,7 +9,7 @@ import com.intellij.execution.executors.DefaultRunExecutor;
 import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.openapi.options.SettingsEditor;
 import com.intellij.openapi.project.Project;
-import dev.farrun.run.execution.DemoRunState;
+import dev.farrun.run.execution.FarRunRunState;
 import dev.farrun.run.source.SourceConfigurationLinkUpdater;
 import dev.farrun.run.source.SourceConfigurationReference;
 import dev.farrun.server.Server;
@@ -17,7 +17,7 @@ import dev.farrun.server.ServerStore;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/** A persisted FarRun configuration which currently runs a local lifecycle demonstration. */
+/** A persisted FarRun configuration with source-specific execution strategies. */
 public final class DemoRunConfiguration extends RunConfigurationBase<DemoRunConfigurationOptions> {
 
     private static final String DEBUG_NOT_SUPPORTED_MESSAGE = "FarRun debug is not supported yet.";
@@ -81,6 +81,10 @@ public final class DemoRunConfiguration extends RunConfigurationBase<DemoRunConf
         if (!DefaultRunExecutor.EXECUTOR_ID.equals(executor.getId())) {
             throw new ExecutionException(DEBUG_NOT_SUPPORTED_MESSAGE);
         }
-        return new DemoRunState(getProject(), getSourceReference());
+        SourceConfigurationReference sourceReference = getSourceReference();
+        if (sourceReference == null) {
+            throw new ExecutionException("FarRun requires a source Run Configuration.");
+        }
+        return new FarRunRunState(getProject(), sourceReference, getServer());
     }
 }

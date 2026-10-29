@@ -18,6 +18,7 @@ repositories {
 
 dependencies {
     implementation("org.apache.sshd:sshd-core:2.19.0")
+    implementation("org.apache.sshd:sshd-sftp:2.19.0")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")

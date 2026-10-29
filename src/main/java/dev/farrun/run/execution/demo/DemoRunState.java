@@ -1,4 +1,4 @@
-package dev.farrun.run.execution;
+package dev.farrun.run.execution.demo;
 
 import com.intellij.execution.DefaultExecutionResult;
 import com.intellij.execution.ExecutionException;

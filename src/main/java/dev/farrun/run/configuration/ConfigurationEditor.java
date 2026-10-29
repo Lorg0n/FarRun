@@ -76,7 +76,7 @@ public final class ConfigurationEditor extends SettingsEditor<DemoRunConfigurati
     @Override
     protected @NotNull JComponent createEditor() {
         JBLabel demoStatus = new JBLabel(
-                "Demo mode only: Run shows source diagnostics and does not connect to a server."
+                "Java Application runs remotely through the selected SSH server. Gradle execution is not implemented yet."
         );
 
         sourceConfiguration.setRenderer(new SourceConfigurationRenderer());

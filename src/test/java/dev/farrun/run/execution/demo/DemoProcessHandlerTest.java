@@ -1,4 +1,4 @@
-package dev.farrun.run.execution;
+package dev.farrun.run.execution.demo;
 
 import com.intellij.execution.process.ProcessAdapter;
 import com.intellij.execution.process.ProcessEvent;
