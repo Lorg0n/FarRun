@@ -50,6 +50,14 @@ public final class DemoProcessHandler extends ProcessHandler {
         }), true);
     }
 
+    public DemoProcessHandler(@NotNull List<String> messages) {
+        this(messages, DEMO_DELAY_MILLIS, Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "FarRun demo execution");
+            thread.setDaemon(true);
+            return thread;
+        }), true);
+    }
+
     DemoProcessHandler(
             @NotNull List<String> messages,
             long delayMillis,

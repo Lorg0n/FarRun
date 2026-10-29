@@ -5,12 +5,17 @@ import com.intellij.execution.Executor;
 import com.intellij.execution.configurations.ConfigurationFactory;
 import com.intellij.execution.configurations.RunConfigurationBase;
 import com.intellij.execution.configurations.RunProfileState;
+import com.intellij.execution.configurations.RuntimeConfigurationError;
 import com.intellij.execution.executors.DefaultRunExecutor;
 import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.openapi.options.SettingsEditor;
 import com.intellij.openapi.project.Project;
 import dev.farrun.run.execution.DemoRunState;
+import dev.farrun.run.source.SourceConfigurationLinkUpdater;
+import dev.farrun.run.source.SourceConfigurationReference;
+import dev.farrun.run.source.SourceConfigurationResolver;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /** A persisted FarRun configuration which currently runs a local lifecycle demonstration. */
 public final class DemoRunConfiguration extends RunConfigurationBase<DemoRunConfigurationOptions> {
@@ -23,6 +28,7 @@ public final class DemoRunConfiguration extends RunConfigurationBase<DemoRunConf
             @NotNull String name
     ) {
         super(project, factory, name);
+        SourceConfigurationLinkUpdater.getInstance(project);
     }
 
     @Override
@@ -40,6 +46,31 @@ public final class DemoRunConfiguration extends RunConfigurationBase<DemoRunConf
         return new ConfigurationEditor();
     }
 
+    public @Nullable SourceConfigurationReference getSourceReference() {
+        return SourceConfigurationReference.from(
+                getOptions().getSourceConfigurationId(),
+                getOptions().getSourceConfigurationTypeId(),
+                getOptions().getSourceConfigurationName()
+        );
+    }
+
+    public void setSourceReference(@Nullable SourceConfigurationReference reference) {
+        getOptions().setSourceConfigurationId(reference == null ? null : reference.settingsId());
+        getOptions().setSourceConfigurationTypeId(reference == null ? null : reference.typeId());
+        getOptions().setSourceConfigurationName(reference == null ? null : reference.name());
+    }
+
+    @Override
+    public void checkConfiguration() throws RuntimeConfigurationError {
+        SourceConfigurationReference reference = getSourceReference();
+        if (reference == null) {
+            throw new RuntimeConfigurationError("Select a Java Application or Gradle source configuration.");
+        }
+        if (SourceConfigurationResolver.resolve(getProject(), reference).isEmpty()) {
+            throw new RuntimeConfigurationError("The selected source configuration is no longer available.");
+        }
+    }
+
     @Override
     public @NotNull RunProfileState getState(
             @NotNull Executor executor,
@@ -48,6 +79,6 @@ public final class DemoRunConfiguration extends RunConfigurationBase<DemoRunConf
         if (!DefaultRunExecutor.EXECUTOR_ID.equals(executor.getId())) {
             throw new ExecutionException(DEBUG_NOT_SUPPORTED_MESSAGE);
         }
-        return new DemoRunState(getProject());
+        return new DemoRunState(getProject(), getSourceReference());
     }
 }

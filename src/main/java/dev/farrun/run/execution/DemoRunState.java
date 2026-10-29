@@ -10,15 +10,22 @@ import com.intellij.execution.runners.ProgramRunner;
 import com.intellij.execution.ui.ConsoleView;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
+import dev.farrun.run.source.SourceConfigurationReference;
+import dev.farrun.run.source.SourceConfigurationResolver;
 import org.jetbrains.annotations.NotNull;
 
 /** Creates the standard Run tool-window console for one FarRun demo execution. */
 public final class DemoRunState implements RunProfileState {
 
     private final @NotNull Project project;
+    private final SourceConfigurationReference sourceReference;
 
-    public DemoRunState(@NotNull Project project) {
+    public DemoRunState(
+            @NotNull Project project,
+            SourceConfigurationReference sourceReference
+    ) {
         this.project = project;
+        this.sourceReference = sourceReference;
     }
 
     @Override
@@ -26,7 +33,9 @@ public final class DemoRunState implements RunProfileState {
             @NotNull Executor executor,
             @NotNull ProgramRunner<?> runner
     ) throws ExecutionException {
-        DemoProcessHandler processHandler = new DemoProcessHandler();
+        DemoProcessHandler processHandler = new DemoProcessHandler(
+                SourceConfigurationResolver.describe(project, sourceReference)
+        );
         Disposer.register(project, processHandler::destroyProcess);
         ConsoleView console = TextConsoleBuilderFactory.getInstance()
                 .createBuilder(project)

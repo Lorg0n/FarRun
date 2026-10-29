@@ -21,6 +21,10 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 
     intellijPlatform {
+        bundledPlugin("com.intellij.java")
+        bundledPlugin("org.jetbrains.plugins.gradle")
+        bundledModule("intellij.gradle")
+
         val localIdeaPath = providers.gradleProperty("localIdeaPath")
         if (localIdeaPath.isPresent) {
             local(localIdeaPath.get())
