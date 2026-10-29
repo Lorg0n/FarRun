@@ -17,6 +17,9 @@ repositories {
 }
 
 dependencies {
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+
     intellijPlatform {
         val localIdeaPath = providers.gradleProperty("localIdeaPath")
         if (localIdeaPath.isPresent) {
@@ -36,6 +39,10 @@ java {
 tasks.withType<JavaCompile>().configureEach {
     options.release = 25
     options.encoding = "UTF-8"
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 intellijPlatform {

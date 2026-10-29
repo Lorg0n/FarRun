@@ -13,7 +13,7 @@ import javax.swing.JPanel;
 public final class FarRunSettingsEditor extends SettingsEditor<FarRunConfiguration> {
 
     private static final String INFORMATION_MESSAGE =
-            "Remote execution is not implemented yet. This configuration is currently a placeholder.";
+            "Demo mode: FarRun currently simulates remote execution.";
 
     @Override
     protected void resetEditorFrom(@NotNull FarRunConfiguration configuration) {
