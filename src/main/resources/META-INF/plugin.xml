@@ -12,6 +12,10 @@
                            displayType="BALLOON"
                            isLogByDefault="true"/>
         <configurationType implementation="dev.farrun.run.configuration.RunConfigurationType"/>
+        <applicationConfigurable id="dev.farrun.settings.servers"
+                                 parentId="tools"
+                                 displayName="FarRun"
+                                 instance="dev.farrun.settings.FarRunConfigurable"/>
     </extensions>
 
     <actions>
