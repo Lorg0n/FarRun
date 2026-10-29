@@ -1,0 +1,18 @@
+# Gradle
+.gradle/
+build/
+
+# IntelliJ Platform Gradle Plugin caches and development sandbox
+.intellijPlatform/
+.sandbox/
+
+# IntelliJ IDEA project files
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# Local environment files
+local.properties
+.env
