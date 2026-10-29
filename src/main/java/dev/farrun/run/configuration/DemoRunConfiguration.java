@@ -12,6 +12,8 @@ import com.intellij.openapi.project.Project;
 import dev.farrun.run.execution.DemoRunState;
 import dev.farrun.run.source.SourceConfigurationLinkUpdater;
 import dev.farrun.run.source.SourceConfigurationReference;
+import dev.farrun.server.Server;
+import dev.farrun.server.ServerStore;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -56,6 +58,19 @@ public final class DemoRunConfiguration extends RunConfigurationBase<DemoRunConf
         getOptions().setSourceConfigurationId(reference == null ? null : reference.settingsId());
         getOptions().setSourceConfigurationTypeId(reference == null ? null : reference.typeId());
         getOptions().setSourceConfigurationName(reference == null ? null : reference.name());
+    }
+
+    public @Nullable String getServerId() {
+        return getOptions().getServerId();
+    }
+
+    public @Nullable Server getServer() {
+        String serverId = getServerId();
+        return serverId == null ? null : ServerStore.getInstance().find(serverId);
+    }
+
+    public void setServer(@Nullable Server server) {
+        getOptions().setServerId(server == null ? null : server.id());
     }
 
     @Override

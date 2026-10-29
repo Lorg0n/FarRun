@@ -15,11 +15,13 @@ public final class DemoRunConfigurationOptions extends RunConfigurationOptions {
     private final StoredPropertyBase<String> sourceConfigurationId = string(null);
     private final StoredPropertyBase<String> sourceConfigurationTypeId = string(null);
     private final StoredPropertyBase<String> sourceConfigurationName = string(null);
+    private final StoredPropertyBase<String> serverId = string(null);
 
     public DemoRunConfigurationOptions() {
         sourceConfigurationId.setName("sourceConfigurationId");
         sourceConfigurationTypeId.setName("sourceConfigurationTypeId");
         sourceConfigurationName.setName("sourceConfigurationName");
+        serverId.setName("serverId");
     }
 
     public @Nullable String getSourceConfigurationId() {
@@ -44,5 +46,13 @@ public final class DemoRunConfigurationOptions extends RunConfigurationOptions {
 
     public void setSourceConfigurationName(@Nullable String value) {
         sourceConfigurationName.setValue(this, value);
+    }
+
+    public @Nullable String getServerId() {
+        return serverId.getValue(this);
+    }
+
+    public void setServerId(@Nullable String value) {
+        serverId.setValue(this, value);
     }
 }

@@ -21,6 +21,7 @@ class DemoRunConfigurationOptionsTest {
         options.setSourceConfigurationId(reference.settingsId());
         options.setSourceConfigurationTypeId(reference.typeId());
         options.setSourceConfigurationName(reference.name());
+        options.setServerId("f23d8c86-3117-42c5-8052-67d7d2e0f8ac");
 
         Element serialized = XmlSerializer.serialize(options);
         DemoRunConfigurationOptions restored = XmlSerializer.deserialize(
@@ -31,6 +32,7 @@ class DemoRunConfigurationOptionsTest {
         assertEquals(reference.settingsId(), restored.getSourceConfigurationId());
         assertEquals(reference.typeId(), restored.getSourceConfigurationTypeId());
         assertEquals(reference.name(), restored.getSourceConfigurationName());
+        assertEquals("f23d8c86-3117-42c5-8052-67d7d2e0f8ac", restored.getServerId());
     }
 
     @Test
