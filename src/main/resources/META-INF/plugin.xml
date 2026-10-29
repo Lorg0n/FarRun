@@ -9,6 +9,7 @@
         <notificationGroup id="FarRun Notifications"
                            displayType="BALLOON"
                            isLogByDefault="true"/>
+        <configurationType implementation="dev.farrun.run.FarRunConfigurationType"/>
     </extensions>
 
     <actions>
