@@ -17,21 +17,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class FarRunDemoProcessHandlerTest {
+class DemoProcessHandlerTest {
 
     @Test
     void emitsMessagesInOrderAndTerminatesSuccessfully() throws Exception {
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
         try {
-            FarRunDemoProcessHandler handler = new FarRunDemoProcessHandler(
-                    FarRunDemoProcessHandler.DEMO_MESSAGES, 1, scheduler);
+            DemoProcessHandler handler = new DemoProcessHandler(
+                    DemoProcessHandler.DEMO_MESSAGES, 1, scheduler);
             RecordingListener listener = new RecordingListener();
             handler.addProcessListener(listener);
 
             handler.startNotify();
 
             assertTrue(listener.awaitTermination());
-            assertEquals(FarRunDemoProcessHandler.DEMO_MESSAGES, listener.messages());
+            assertEquals(DemoProcessHandler.DEMO_MESSAGES, listener.messages());
             assertEquals(0, listener.exitCode());
             assertEquals(1, listener.terminationCount());
         } finally {
@@ -43,8 +43,8 @@ class FarRunDemoProcessHandlerTest {
     void stopTerminatesOnceAndPreventsFurtherOutput() throws Exception {
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
         try {
-            FarRunDemoProcessHandler handler = new FarRunDemoProcessHandler(
-                    FarRunDemoProcessHandler.DEMO_MESSAGES, 1_000, scheduler);
+            DemoProcessHandler handler = new DemoProcessHandler(
+                    DemoProcessHandler.DEMO_MESSAGES, 1_000, scheduler);
             RecordingListener listener = new RecordingListener();
             handler.addProcessListener(listener);
 
@@ -72,10 +72,10 @@ class FarRunDemoProcessHandlerTest {
         ScheduledExecutorService firstScheduler = Executors.newSingleThreadScheduledExecutor();
         ScheduledExecutorService secondScheduler = Executors.newSingleThreadScheduledExecutor();
         try {
-            FarRunDemoProcessHandler first = new FarRunDemoProcessHandler(
-                    FarRunDemoProcessHandler.DEMO_MESSAGES, 1, firstScheduler);
-            FarRunDemoProcessHandler second = new FarRunDemoProcessHandler(
-                    FarRunDemoProcessHandler.DEMO_MESSAGES, 1, secondScheduler);
+            DemoProcessHandler first = new DemoProcessHandler(
+                    DemoProcessHandler.DEMO_MESSAGES, 1, firstScheduler);
+            DemoProcessHandler second = new DemoProcessHandler(
+                    DemoProcessHandler.DEMO_MESSAGES, 1, secondScheduler);
             RecordingListener firstListener = new RecordingListener();
             RecordingListener secondListener = new RecordingListener();
             first.addProcessListener(firstListener);
@@ -86,8 +86,8 @@ class FarRunDemoProcessHandlerTest {
 
             assertTrue(firstListener.awaitTermination());
             assertTrue(secondListener.awaitTermination());
-            assertEquals(FarRunDemoProcessHandler.DEMO_MESSAGES, firstListener.messages());
-            assertEquals(FarRunDemoProcessHandler.DEMO_MESSAGES, secondListener.messages());
+            assertEquals(DemoProcessHandler.DEMO_MESSAGES, firstListener.messages());
+            assertEquals(DemoProcessHandler.DEMO_MESSAGES, secondListener.messages());
         } finally {
             firstScheduler.shutdownNow();
             secondScheduler.shutdownNow();

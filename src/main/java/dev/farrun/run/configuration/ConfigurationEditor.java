@@ -1,4 +1,4 @@
-package dev.farrun.run;
+package dev.farrun.run.configuration;
 
 import com.intellij.openapi.options.SettingsEditor;
 import com.intellij.ui.components.JBLabel;
@@ -10,18 +10,18 @@ import javax.swing.JComponent;
 import javax.swing.JPanel;
 
 /** The native Run Configuration editor for FarRun's currently unavailable settings. */
-public final class FarRunSettingsEditor extends SettingsEditor<FarRunConfiguration> {
+public final class ConfigurationEditor extends SettingsEditor<DemoRunConfiguration> {
 
     private static final String INFORMATION_MESSAGE =
             "Demo mode: FarRun currently simulates remote execution.";
 
     @Override
-    protected void resetEditorFrom(@NotNull FarRunConfiguration configuration) {
+    protected void resetEditorFrom(@NotNull DemoRunConfiguration configuration) {
         // All fields are informational placeholders during the initial integration.
     }
 
     @Override
-    protected void applyEditorTo(@NotNull FarRunConfiguration configuration) {
+    protected void applyEditorTo(@NotNull DemoRunConfiguration configuration) {
         // Deliberately persist no placeholder values.
     }
 

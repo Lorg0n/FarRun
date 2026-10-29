@@ -1,4 +1,4 @@
-package dev.farrun.run;
+package dev.farrun.run.configuration;
 
 import com.intellij.execution.configurations.RunConfigurationOptions;
 
@@ -8,5 +8,5 @@ import com.intellij.execution.configurations.RunConfigurationOptions;
  * <p>The initial configuration intentionally has no stored connection values: the
  * editor currently shows placeholders only.</p>
  */
-public final class FarRunConfigurationOptions extends RunConfigurationOptions {
+public final class DemoRunConfigurationOptions extends RunConfigurationOptions {
 }

@@ -13,11 +13,11 @@ import com.intellij.openapi.util.Disposer;
 import org.jetbrains.annotations.NotNull;
 
 /** Creates the standard Run tool-window console for one FarRun demo execution. */
-public final class FarRunRunState implements RunProfileState {
+public final class DemoRunState implements RunProfileState {
 
     private final @NotNull Project project;
 
-    public FarRunRunState(@NotNull Project project) {
+    public DemoRunState(@NotNull Project project) {
         this.project = project;
     }
 
@@ -26,7 +26,7 @@ public final class FarRunRunState implements RunProfileState {
             @NotNull Executor executor,
             @NotNull ProgramRunner<?> runner
     ) throws ExecutionException {
-        FarRunDemoProcessHandler processHandler = new FarRunDemoProcessHandler();
+        DemoProcessHandler processHandler = new DemoProcessHandler();
         Disposer.register(project, processHandler::destroyProcess);
         ConsoleView console = TextConsoleBuilderFactory.getInstance()
                 .createBuilder(project)

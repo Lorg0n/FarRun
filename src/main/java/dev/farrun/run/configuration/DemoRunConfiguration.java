@@ -1,4 +1,4 @@
-package dev.farrun.run;
+package dev.farrun.run.configuration;
 
 import com.intellij.execution.ExecutionException;
 import com.intellij.execution.Executor;
@@ -9,15 +9,15 @@ import com.intellij.execution.executors.DefaultRunExecutor;
 import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.openapi.options.SettingsEditor;
 import com.intellij.openapi.project.Project;
-import dev.farrun.run.execution.FarRunRunState;
+import dev.farrun.run.execution.DemoRunState;
 import org.jetbrains.annotations.NotNull;
 
 /** A persisted FarRun configuration which currently runs a local lifecycle demonstration. */
-public final class FarRunConfiguration extends RunConfigurationBase<FarRunConfigurationOptions> {
+public final class DemoRunConfiguration extends RunConfigurationBase<DemoRunConfigurationOptions> {
 
     private static final String DEBUG_NOT_SUPPORTED_MESSAGE = "FarRun debug is not supported yet.";
 
-    FarRunConfiguration(
+    DemoRunConfiguration(
             @NotNull Project project,
             @NotNull ConfigurationFactory factory,
             @NotNull String name
@@ -26,18 +26,18 @@ public final class FarRunConfiguration extends RunConfigurationBase<FarRunConfig
     }
 
     @Override
-    protected @NotNull FarRunConfigurationOptions getOptions() {
-        return (FarRunConfigurationOptions) super.getOptions();
+    protected @NotNull DemoRunConfigurationOptions getOptions() {
+        return (DemoRunConfigurationOptions) super.getOptions();
     }
 
     @Override
-    protected @NotNull Class<? extends FarRunConfigurationOptions> getOptionsClass() {
-        return FarRunConfigurationOptions.class;
+    protected @NotNull Class<? extends DemoRunConfigurationOptions> getOptionsClass() {
+        return DemoRunConfigurationOptions.class;
     }
 
     @Override
-    public @NotNull SettingsEditor<? extends FarRunConfiguration> getConfigurationEditor() {
-        return new FarRunSettingsEditor();
+    public @NotNull SettingsEditor<? extends DemoRunConfiguration> getConfigurationEditor() {
+        return new ConfigurationEditor();
     }
 
     @Override
@@ -48,6 +48,6 @@ public final class FarRunConfiguration extends RunConfigurationBase<FarRunConfig
         if (!DefaultRunExecutor.EXECUTOR_ID.equals(executor.getId())) {
             throw new ExecutionException(DEBUG_NOT_SUPPORTED_MESSAGE);
         }
-        return new FarRunRunState(getProject());
+        return new DemoRunState(getProject());
     }
 }

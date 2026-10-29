@@ -9,12 +9,12 @@
         <notificationGroup id="FarRun Notifications"
                            displayType="BALLOON"
                            isLogByDefault="true"/>
-        <configurationType implementation="dev.farrun.run.FarRunConfigurationType"/>
+        <configurationType implementation="dev.farrun.run.configuration.RunConfigurationType"/>
     </extensions>
 
     <actions>
         <action id="dev.farrun.actions.FarRunHelloAction"
-                class="dev.farrun.actions.FarRunHelloAction"
+                class="dev.farrun.actions.HelloAction"
                 text="FarRun: Hello"
                 description="Show a FarRun integration notification">
             <add-to-group group-id="ToolsMenu" anchor="last"/>

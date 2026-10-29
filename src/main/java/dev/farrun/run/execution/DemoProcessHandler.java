@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * A per-run virtual process which demonstrates FarRun's future remote lifecycle.
  * It owns and stops its scheduler, so no execution work outlives this process.
  */
-public final class FarRunDemoProcessHandler extends ProcessHandler {
+public final class DemoProcessHandler extends ProcessHandler {
 
     public static final List<String> DEMO_MESSAGES = List.of(
             "[FarRun] Starting remote execution...",
@@ -42,7 +42,7 @@ public final class FarRunDemoProcessHandler extends ProcessHandler {
     private final AtomicBoolean terminated = new AtomicBoolean();
     private final Object lifecycleLock = new Object();
 
-    public FarRunDemoProcessHandler() {
+    public DemoProcessHandler() {
         this(DEMO_MESSAGES, DEMO_DELAY_MILLIS, Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "FarRun demo execution");
             thread.setDaemon(true);
@@ -50,7 +50,7 @@ public final class FarRunDemoProcessHandler extends ProcessHandler {
         }), true);
     }
 
-    FarRunDemoProcessHandler(
+    DemoProcessHandler(
             @NotNull List<String> messages,
             long delayMillis,
             @NotNull ScheduledExecutorService scheduler
@@ -58,7 +58,7 @@ public final class FarRunDemoProcessHandler extends ProcessHandler {
         this(messages, delayMillis, scheduler, false);
     }
 
-    private FarRunDemoProcessHandler(
+    private DemoProcessHandler(
             @NotNull List<String> messages,
             long delayMillis,
             @NotNull ScheduledExecutorService scheduler,
