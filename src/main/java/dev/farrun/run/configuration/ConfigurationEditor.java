@@ -1,8 +1,10 @@
 package dev.farrun.run.configuration;
 
 import com.intellij.openapi.options.SettingsEditor;
+import com.intellij.ui.TitledSeparator;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBTextField;
+import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.FormBuilder;
 import dev.farrun.run.source.SourceConfigurationReference;
 import dev.farrun.run.source.SourceConfigurationResolver;
@@ -17,11 +19,8 @@ import javax.swing.JPanel;
 import java.awt.Component;
 import java.util.List;
 
-/** The native Run Configuration editor for FarRun's currently unavailable settings. */
+/** Native configuration editor focused on selecting existing application and server settings. */
 public final class ConfigurationEditor extends SettingsEditor<DemoRunConfiguration> {
-
-    private static final String INFORMATION_MESSAGE =
-            "Demo mode: FarRun currently simulates remote execution.";
 
     private final JComboBox<SourceConfigurationReference> sourceConfiguration = new JComboBox<>();
     private final JBLabel sourceStatus = new JBLabel();
@@ -39,11 +38,13 @@ public final class ConfigurationEditor extends SettingsEditor<DemoRunConfigurati
         sourceConfiguration.setEnabled(!available.isEmpty());
 
         if (available.isEmpty()) {
-            sourceStatus.setText("No Java Application or Gradle run configurations are available.");
+            sourceStatus.setText("Create a Java Application or Gradle configuration first. It will appear here automatically.");
         } else if (selected != null && !available.contains(selected)) {
-            sourceStatus.setText("The selected source configuration is no longer available.");
+            sourceStatus.setText("The previously selected configuration is unavailable. Choose another source configuration.");
+        } else if (selected != null) {
+            sourceStatus.setText("FarRun reads this configuration's latest settings every time it runs.");
         } else {
-            sourceStatus.setText(" ");
+            sourceStatus.setText("Choose the application or Gradle task that FarRun should use as its source.");
         }
     }
 
@@ -54,18 +55,27 @@ public final class ConfigurationEditor extends SettingsEditor<DemoRunConfigurati
 
     @Override
     protected @NotNull JComponent createEditor() {
-        JBTextField sshServer = disabledField("Not configured yet");
-        JBTextField remoteWorkingDirectory = disabledField("/opt/farrun/");
+        JBTextField remoteServer = disabledField("No server selected");
+        JBLabel serverStatus = new JBLabel(
+                "Servers are configured globally in Settings | Tools | FarRun. Select one here when available."
+        );
+        JBLabel demoStatus = new JBLabel(
+                "Demo mode only: Run shows source diagnostics and does not connect to a server."
+        );
 
         sourceConfiguration.setRenderer(new SourceConfigurationRenderer());
-        sourceConfiguration.setToolTipText("Select Java Application or Gradle run configuration");
+        sourceConfiguration.setToolTipText("Select an existing Java Application or Gradle configuration");
 
         JPanel panel = FormBuilder.createFormBuilder()
-                .addLabeledComponent("Source configuration", sourceConfiguration)
-                .addComponent(sourceStatus)
-                .addLabeledComponent("SSH server", sshServer)
-                .addLabeledComponent("Remote working directory", remoteWorkingDirectory)
-                .addComponentFillVertically(new JBLabel(INFORMATION_MESSAGE), 0)
+                .addComponent(new TitledSeparator("Application"))
+                .addLabeledComponent("Run configuration", sourceConfiguration)
+                .addComponent(sourceStatus, JBUI.scale(8))
+                .addComponent(new TitledSeparator("Remote server"), JBUI.scale(16))
+                .addLabeledComponent("Server", remoteServer)
+                .addComponent(serverStatus, JBUI.scale(8))
+                .addComponent(new TitledSeparator("Run behavior"), JBUI.scale(16))
+                .addComponent(demoStatus)
+                .addComponentFillVertically(new JPanel(), 0)
                 .getPanel();
         return panel;
     }
@@ -91,7 +101,7 @@ public final class ConfigurationEditor extends SettingsEditor<DemoRunConfigurati
             if (value instanceof SourceConfigurationReference reference) {
                 setText(SourceConfigurationResolver.presentableName(reference));
             } else {
-                setText("Select Java or Gradle run configuration...");
+                setText("Select a Java or Gradle configuration...");
             }
             return this;
         }

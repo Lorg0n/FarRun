@@ -5,7 +5,6 @@ import com.intellij.execution.Executor;
 import com.intellij.execution.configurations.ConfigurationFactory;
 import com.intellij.execution.configurations.RunConfigurationBase;
 import com.intellij.execution.configurations.RunProfileState;
-import com.intellij.execution.configurations.RuntimeConfigurationError;
 import com.intellij.execution.executors.DefaultRunExecutor;
 import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.openapi.options.SettingsEditor;
@@ -13,7 +12,6 @@ import com.intellij.openapi.project.Project;
 import dev.farrun.run.execution.DemoRunState;
 import dev.farrun.run.source.SourceConfigurationLinkUpdater;
 import dev.farrun.run.source.SourceConfigurationReference;
-import dev.farrun.run.source.SourceConfigurationResolver;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -58,17 +56,6 @@ public final class DemoRunConfiguration extends RunConfigurationBase<DemoRunConf
         getOptions().setSourceConfigurationId(reference == null ? null : reference.settingsId());
         getOptions().setSourceConfigurationTypeId(reference == null ? null : reference.typeId());
         getOptions().setSourceConfigurationName(reference == null ? null : reference.name());
-    }
-
-    @Override
-    public void checkConfiguration() throws RuntimeConfigurationError {
-        SourceConfigurationReference reference = getSourceReference();
-        if (reference == null) {
-            throw new RuntimeConfigurationError("Select a Java Application or Gradle source configuration.");
-        }
-        if (SourceConfigurationResolver.resolve(getProject(), reference).isEmpty()) {
-            throw new RuntimeConfigurationError("The selected source configuration is no longer available.");
-        }
     }
 
     @Override
