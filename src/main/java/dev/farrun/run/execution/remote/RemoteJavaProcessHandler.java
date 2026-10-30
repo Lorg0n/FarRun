@@ -9,6 +9,7 @@ import dev.farrun.server.Server;
 import dev.farrun.server.connection.RemoteSshSession;
 import dev.farrun.run.execution.lifecycle.ExecutionCancellation;
 import dev.farrun.run.execution.java.JavaRuntime;
+import dev.farrun.run.execution.java.RemoteJavaRuntimeManager;
 import org.apache.sshd.client.channel.ClientChannel;
 import org.apache.sshd.client.channel.ClientChannelEvent;
 import org.apache.sshd.sftp.client.SftpClient;
@@ -32,6 +33,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /** ProcessHandler for one remote JVM and all resources belonging to its launch. */
 public class RemoteJavaProcessHandler extends ProcessHandler {
     private static final int STOP_EXIT_CODE = 130;
+    private static final int CHANNEL_OPEN_ATTEMPTS = 4;
+    private static final long CHANNEL_OPEN_RETRY_MILLIS = 250;
 
     private final @NotNull Project project;
     private final @NotNull RuntimeFactory runtimeFactory;
@@ -49,6 +52,7 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
     private volatile @Nullable RemoteSshSession ssh;
     private volatile @Nullable ClientChannel channel;
     private volatile @Nullable String remoteDirectory;
+    private volatile @Nullable String remoteJava;
 
     public RemoteJavaProcessHandler(
             @NotNull Project project,
@@ -113,8 +117,14 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
             ssh = session;
             cancellation.check();
             emit("[FarRun] SSH connection established.");
-            emit("[FarRun] Checking remote Java...");
-            executeSetupCommand(session, "java -version");
+            emit("[FarRun] Required Java: " + runtime.requiredJavaMajor());
+            emit("[FarRun] Checking remote runtime...");
+            remoteJava = new RemoteJavaRuntimeManager().ensure(
+                    session,
+                    runtime.requiredJavaMajor(),
+                    cancellation,
+                    this::emit
+            );
 
             remoteDirectory = "/tmp/farrun/" + UUID.randomUUID();
             executeSetupCommand(session, "mkdir -p " + PosixCommand.quote(remoteDirectory + "/cp"));
@@ -123,6 +133,9 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
             try (SftpClient sftp = SftpClientFactory.instance().createSftpClient(session.session())) {
                 uploadClasspath(sftp);
             }
+            // Some SSH servers enforce a very small MaxSessions value and account for a
+            // just-closed SFTP channel briefly. Give the server a bounded release window.
+            awaitChannelRelease();
             cancellation.check();
             emit("[FarRun] Starting remote JVM...");
             exitCode = executeJvm(session);
@@ -171,20 +184,15 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
     private int executeJvm(@NotNull RemoteSshSession session) throws IOException {
         JavaRuntime currentRuntime = requireRuntime();
         List<String> command = new java.util.ArrayList<>();
-        command.add("java");
+        command.add(requireRemoteJava());
         command.addAll(currentRuntime.vmArguments());
         command.add("-cp");
         command.add(remoteClasspath());
         command.add(currentRuntime.mainClass());
         command.addAll(currentRuntime.programArguments());
 
-        ClientChannel remoteChannel = session.session().createExecChannel(
-                "cd " + PosixCommand.quote(remoteDirectory) + " && exec " + PosixCommand.join(command)
-        );
-        channel = remoteChannel;
-        remoteChannel.setOut(new ConsoleOutput(ProcessOutputTypes.STDOUT));
-        remoteChannel.setErr(new ConsoleOutput(ProcessOutputTypes.STDERR));
-        remoteChannel.open().verify();
+        ClientChannel remoteChannel = openJvmChannel(session,
+                "cd " + PosixCommand.quote(remoteDirectory) + " && exec " + PosixCommand.join(command));
         while (true) {
             if (cancellation.isCancelled()) {
                 remoteChannel.close(true);
@@ -197,12 +205,52 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
             if (events.contains(ClientChannelEvent.EXIT_STATUS)
                     || events.contains(ClientChannelEvent.EXIT_SIGNAL)
                     || events.contains(ClientChannelEvent.CLOSED)) {
+                if (cancellation.isCancelled()) {
+                    return STOP_EXIT_CODE;
+                }
                 Integer status = remoteChannel.getExitStatus();
                 if (status == null) {
                     emitError("[FarRun] SSH connection lost before the remote JVM reported an exit code.");
                     return 255;
                 }
                 return status;
+            }
+        }
+    }
+
+    private @NotNull ClientChannel openJvmChannel(@NotNull RemoteSshSession session, @NotNull String command)
+            throws IOException {
+        IOException lastFailure = null;
+        for (int attempt = 1; attempt <= CHANNEL_OPEN_ATTEMPTS; attempt++) {
+            cancellation.check();
+            ClientChannel candidate = session.session().createExecChannel(command);
+            candidate.setOut(new ConsoleOutput(ProcessOutputTypes.STDOUT));
+            candidate.setErr(new ConsoleOutput(ProcessOutputTypes.STDERR));
+            try {
+                candidate.open().verify();
+                channel = candidate;
+                return candidate;
+            } catch (IOException failure) {
+                lastFailure = failure;
+                candidate.close(true);
+                if (attempt < CHANNEL_OPEN_ATTEMPTS) {
+                    awaitChannelRelease();
+                }
+            }
+        }
+        throw new IOException("SSH server rejected the remote command channel after " + CHANNEL_OPEN_ATTEMPTS
+                + " attempts. Check the server's MaxSessions and forced-command policy.", lastFailure);
+    }
+
+    private void awaitChannelRelease() {
+        for (int elapsed = 0; elapsed < CHANNEL_OPEN_RETRY_MILLIS; elapsed += 25) {
+            cancellation.check();
+            try {
+                Thread.sleep(25);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                cancellation.cancel();
+                cancellation.check();
             }
         }
     }
@@ -318,6 +366,14 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
             throw new IllegalStateException("Java runtime was not prepared.");
         }
         return currentRuntime;
+    }
+
+    private @NotNull String requireRemoteJava() {
+        String java = remoteJava;
+        if (java == null) {
+            throw new IllegalStateException("Remote Java runtime was not prepared.");
+        }
+        return java;
     }
 
     @FunctionalInterface

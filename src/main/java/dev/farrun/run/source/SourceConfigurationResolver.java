@@ -122,6 +122,7 @@ public final class SourceConfigurationResolver {
                 "[FarRun] Gradle project: " + valueOrNotAvailable(taskSettings.getExternalProjectPath()),
                 "[FarRun] Tasks: " + tasks,
                 "[FarRun] Arguments: " + valueOrNotSet(taskSettings.getScriptParameters()),
+                "[FarRun] Supported application tasks: bootRun, bootJar and run.",
                 completionMessage()
         );
     }
@@ -145,6 +146,6 @@ public final class SourceConfigurationResolver {
     }
 
     private static @NotNull String completionMessage() {
-        return "[FarRun] Demo execution completed.";
+        return "[FarRun] Ready for remote execution.";
     }
 }

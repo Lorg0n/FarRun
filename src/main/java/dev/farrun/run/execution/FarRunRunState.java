@@ -69,7 +69,13 @@ public final class FarRunRunState implements RunProfileState {
             return new JavaApplicationStrategy(project, application, server);
         }
         if (source instanceof org.jetbrains.plugins.gradle.service.execution.GradleRunConfiguration) {
-            return new GradleStrategy();
+            if (server == null) {
+                return () -> new MessageProcessHandler(java.util.List.of(
+                        "[FarRun] Select an SSH server before running Gradle application."
+                ), 1);
+            }
+            return new GradleStrategy(project,
+                    (org.jetbrains.plugins.gradle.service.execution.GradleRunConfiguration) source, server);
         }
         return () -> new MessageProcessHandler(java.util.List.of(
                 "[FarRun] Unsupported source configuration type."

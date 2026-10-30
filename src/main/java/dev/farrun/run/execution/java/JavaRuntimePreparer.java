@@ -39,6 +39,7 @@ public final class JavaRuntimePreparer {
             throw new IllegalArgumentException("The Java Application has no module.");
         }
         compile(project, module, mainClass, cancellation);
+        int requiredJavaMajor = JavaRuntimeRequirement.resolve(project, module, mainClass);
 
         JavaRuntime runtime = onEdt(() -> {
             JavaParameters parameters = new JavaParameters();
@@ -65,7 +66,8 @@ public final class JavaRuntimePreparer {
                     mainClass,
                     classpath,
                     parseArguments(configuration.getVMParameters()),
-                    parseArguments(configuration.getProgramParameters())
+                    parseArguments(configuration.getProgramParameters()),
+                    requiredJavaMajor
             );
         });
         return runtime;
