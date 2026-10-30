@@ -1,0 +1,26 @@
+kind: pipeline
+type: docker
+name: build-and-publish
+
+trigger:
+  event:
+    - tag
+  ref:
+    - refs/tags/v*
+
+steps:
+  - name: verify-and-package
+    image: eclipse-temurin:25-jdk
+    commands:
+      - test "$DRONE_TAG" = "v$(sed -n 's/^pluginVersion=//p' gradle.properties)"
+      - ./gradlew test verifyPlugin buildPlugin
+
+  - name: publish-to-jetbrains-marketplace
+    image: eclipse-temurin:25-jdk
+    environment:
+      PUBLISH_TOKEN:
+        from_secret: JETBRAINS_MARKETPLACE_TOKEN
+    commands:
+      - ./gradlew publishPlugin
+    depends_on:
+      - verify-and-package
