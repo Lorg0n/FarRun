@@ -1,7 +1,7 @@
 package dev.farrun.run.configuration;
 
 import com.intellij.execution.configurations.ConfigurationTypeBase;
-import com.intellij.icons.AllIcons;
+import dev.farrun.icons.FarRunIcons;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -15,7 +15,7 @@ public final class RunConfigurationType extends ConfigurationTypeBase {
     public static final String ID = "FarRunRunConfiguration";
 
     public RunConfigurationType() {
-        super(ID, "FarRun", "Runs an application through FarRun", AllIcons.RunConfigurations.Application);
+        super(ID, "FarRun", "Runs an application through FarRun", FarRunIcons.RUN_CONFIGURATION);
         addFactory(new RunConfigurationFactory(this));
     }
 
