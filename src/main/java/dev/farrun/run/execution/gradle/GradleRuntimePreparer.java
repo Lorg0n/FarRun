@@ -36,12 +36,13 @@ public final class GradleRuntimePreparer {
         if (!Files.isRegularFile(wrapper)) {
             throw new IOException("Gradle Wrapper was not found in " + project + ". FarRun does not install Gradle remotely.");
         }
-        String buildTask = normalized.equals("run") ? "installDist" : "bootJar";
+        String buildTask = replacementTask(task, normalized.equals("run") ? "installDist" : "bootJar");
         run(wrapper, project, buildTask, cancellation);
+        Path applicationProject = taskProjectDirectory(project, task);
         if (normalized.equals("run")) {
-            return applicationRuntime(project, configuration.getProject());
+            return applicationRuntime(applicationProject, configuration.getProject());
         }
-        Path jar = newest(project.resolve("build/libs"), ".jar");
+        Path jar = newest(applicationProject.resolve("build/libs"), ".jar");
         if (jar == null) {
             throw new IOException("Gradle completed but no executable JAR was found in build/libs.");
         }
@@ -86,7 +87,10 @@ public final class GradleRuntimePreparer {
 
     private static void run(Path wrapper, Path project, String task, ExecutionCancellation cancellation) throws Exception {
         Process process = new ProcessBuilder(wrapper.toString(), task, "--no-daemon")
-                .directory(project.toFile()).redirectErrorStream(true).start();
+                .directory(project.toFile())
+                .redirectErrorStream(true)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .start();
         try {
             while (process.isAlive()) {
                 cancellation.check();
@@ -108,6 +112,26 @@ public final class GradleRuntimePreparer {
             return files.filter(Files::isRegularFile).filter(path -> path.toString().endsWith(suffix))
                     .max((a, b) -> Long.compare(a.toFile().lastModified(), b.toFile().lastModified())).orElse(null);
         }
+    }
+
+    static @NotNull String replacementTask(@NotNull String originalTask, @NotNull String replacement) {
+        int taskNameStart = originalTask.lastIndexOf(':') + 1;
+        return originalTask.substring(0, taskNameStart) + replacement;
+    }
+
+    private static @NotNull Path taskProjectDirectory(@NotNull Path rootProject, @NotNull String task) {
+        int taskNameStart = task.lastIndexOf(':');
+        if (taskNameStart <= 0) {
+            return rootProject;
+        }
+        String projectPath = task.substring(0, taskNameStart);
+        Path result = rootProject;
+        for (String segment : projectPath.split(":")) {
+            if (!segment.isEmpty()) {
+                result = result.resolve(segment);
+            }
+        }
+        return result;
     }
 
     private static Path newestDirectory(Path directory) throws IOException {

@@ -7,6 +7,7 @@ import com.intellij.openapi.roots.ProjectRootManager;
 import com.intellij.openapi.roots.LanguageLevelProjectExtension;
 import com.intellij.openapi.roots.ModuleRootManager;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -14,6 +15,7 @@ import java.util.regex.Pattern;
 /** Resolves a conservative Java launch requirement from IntelliJ's source configuration. */
 public final class JavaRuntimeRequirement {
     private static final Pattern VERSION = Pattern.compile("(?:^|[^0-9])(\\d{1,3})(?:[.+_-]|$)");
+    private static final Pattern LEGACY_VERSION = Pattern.compile("(?:^|[^0-9])1[._](\\d{1,3})(?:[.+_-]|$)");
 
     private JavaRuntimeRequirement() {
     }
@@ -24,7 +26,7 @@ public final class JavaRuntimeRequirement {
         if (sdk == null) {
             sdk = ProjectRootManager.getInstance(project).getProjectSdk();
         }
-        Integer sdkMajor = sdk == null ? null : parse(sdk.getVersionString());
+        Integer sdkMajor = sdk == null ? null : parseMajorVersion(sdk.getVersionString());
         Integer languageMajor = languageLevel(project, module);
         if (sdkMajor == null && languageMajor == null) {
             throw new IllegalArgumentException("Cannot determine the Java version for '" + sourceName
@@ -39,15 +41,16 @@ public final class JavaRuntimeRequirement {
 
     private static Integer languageLevel(@NotNull Project project, Module module) {
         var level = LanguageLevelProjectExtension.getInstance(project).getLanguageLevel();
-        return level == null ? null : parse(level.toString());
+        return level == null ? null : parseMajorVersion(level.toString());
     }
 
-    private static Integer parse(String value) {
+    static @Nullable Integer parseMajorVersion(@Nullable String value) {
         if (value == null) {
             return null;
         }
-        if (value.startsWith("1.")) {
-            return Integer.valueOf(value.substring(2, 3));
+        Matcher legacy = LEGACY_VERSION.matcher(value);
+        if (legacy.find()) {
+            return Integer.valueOf(legacy.group(1));
         }
         Matcher matcher = VERSION.matcher(value);
         return matcher.find() ? Integer.valueOf(matcher.group(1)) : null;
