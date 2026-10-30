@@ -3,6 +3,8 @@ package dev.farrun.run.execution.gradle;
 import dev.farrun.run.execution.java.JavaRuntime;
 import dev.farrun.run.execution.java.JavaRuntimeRequirement;
 import dev.farrun.run.execution.lifecycle.ExecutionCancellation;
+import dev.farrun.run.execution.console.ConsoleReporter;
+import dev.farrun.run.execution.remote.PosixCommand;
 import org.jetbrains.plugins.gradle.service.execution.GradleRunConfiguration;
 import org.jetbrains.annotations.NotNull;
 
@@ -21,6 +23,14 @@ public final class GradleRuntimePreparer {
             @NotNull GradleRunConfiguration configuration,
             @NotNull ExecutionCancellation cancellation
     ) throws Exception {
+        return prepare(configuration, cancellation, null);
+    }
+
+    public @NotNull JavaRuntime prepare(
+            @NotNull GradleRunConfiguration configuration,
+            @NotNull ExecutionCancellation cancellation,
+            ConsoleReporter reporter
+    ) throws Exception {
         var settings = configuration.getSettings();
         List<String> tasks = settings.getTaskNames();
         if (tasks.size() != 1) {
@@ -37,7 +47,7 @@ public final class GradleRuntimePreparer {
             throw new IOException("Gradle Wrapper was not found in " + project + ". FarRun does not install Gradle remotely.");
         }
         String buildTask = replacementTask(task, normalized.equals("run") ? "installDist" : "bootJar");
-        run(wrapper, project, buildTask, cancellation);
+        run(wrapper, project, buildTask, cancellation, reporter);
         Path applicationProject = taskProjectDirectory(project, task);
         if (normalized.equals("run")) {
             return applicationRuntime(applicationProject, configuration.getProject());
@@ -85,20 +95,38 @@ public final class GradleRuntimePreparer {
                 JavaRuntimeRequirement.resolve(ideaProject, null, matcher.group(1)));
     }
 
-    private static void run(Path wrapper, Path project, String task, ExecutionCancellation cancellation) throws Exception {
+    private static void run(Path wrapper, Path project, String task, ExecutionCancellation cancellation, ConsoleReporter reporter) throws Exception {
+        long started = System.nanoTime();
+        if (reporter != null) {
+            reporter.start("Building Gradle runtime");
+            reporter.command(PosixCommand.join(List.of(wrapper.toString(), task, "--no-daemon")));
+        }
         Process process = new ProcessBuilder(wrapper.toString(), task, "--no-daemon")
                 .directory(project.toFile())
                 .redirectErrorStream(true)
-                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .start();
+        var tail = new java.util.ArrayDeque<String>();
+        Thread reader = Thread.ofVirtual().start(() -> {
+            try (var lines = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream()))) {
+                for (String line; (line = lines.readLine()) != null;) {
+                    synchronized (tail) { if (tail.size() == 50) tail.removeFirst(); tail.addLast(line); }
+                }
+            } catch (IOException ignored) { }
+        });
         try {
             while (process.isAlive()) {
                 cancellation.check();
                 process.waitFor(250, java.util.concurrent.TimeUnit.MILLISECONDS);
             }
             if (process.exitValue() != 0) {
+                if (reporter != null) {
+                    reporter.error("Gradle task '" + task + "' failed with exit code " + process.exitValue() + ".");
+                    synchronized (tail) { tail.forEach(reporter::error); }
+                }
                 throw new IOException("Local Gradle task '" + task + "' failed with exit code " + process.exitValue() + ".");
             }
+            reader.join(1_000);
+            if (reporter != null) reporter.success("Gradle runtime ready", started);
         } finally {
             if (process.isAlive()) {
                 process.destroyForcibly();

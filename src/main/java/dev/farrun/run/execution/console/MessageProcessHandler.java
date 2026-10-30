@@ -23,8 +23,11 @@ public final class MessageProcessHandler extends ProcessHandler {
     @Override
     public void startNotify() {
         super.startNotify();
+        ConsoleReporter reporter = new ConsoleReporter(this::notifyTextAvailable);
         for (String message : messages) {
-            notifyTextAvailable(message + System.lineSeparator(), ProcessOutputTypes.STDOUT);
+            String content = message.replaceFirst("^\\[FarRun]\\s*", "");
+            if (exitCode == 0) reporter.info(content);
+            else reporter.error(content);
         }
         finish();
     }

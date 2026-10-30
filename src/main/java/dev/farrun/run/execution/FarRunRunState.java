@@ -18,6 +18,12 @@ import dev.farrun.run.execution.console.MessageProcessHandler;
 import dev.farrun.run.execution.strategy.ExecutionStrategy;
 import dev.farrun.run.execution.strategy.GradleStrategy;
 import dev.farrun.run.execution.strategy.JavaApplicationStrategy;
+import dev.farrun.run.execution.remote.RemoteJavaProcessHandler;
+import dev.farrun.run.execution.ui.ExecutionSession;
+import dev.farrun.run.execution.ui.FarRunConsoleView;
+import dev.farrun.run.execution.ui.ExecutionStage;
+import dev.farrun.run.execution.ui.ExecutionStatus;
+import dev.farrun.run.execution.console.FarRunConsoleBridge;
 import org.jetbrains.annotations.NotNull;
 
 /** Selects a source-specific execution strategy while preserving one FarRun user flow. */
@@ -43,11 +49,16 @@ public final class FarRunRunState implements RunProfileState {
     ) throws ExecutionException {
         ExecutionStrategy strategy = selectStrategy();
         var processHandler = strategy.createProcessHandler();
+        ExecutionSession session = new ExecutionSession();
+        if (processHandler instanceof RemoteJavaProcessHandler remote) remote.setExecutionSession(session);
+        else session.fail(ExecutionStatus.FAILED, ExecutionStage.BUILD, "FarRun could not start this configuration.");
         Disposer.register(project, processHandler::destroyProcess);
-        ConsoleView console = TextConsoleBuilderFactory.getInstance()
+        ConsoleView baseConsole = TextConsoleBuilderFactory.getInstance()
                 .createBuilder(project)
                 .getConsole();
-        console.attachToProcess(processHandler);
+        ConsoleView console = new FarRunConsoleView(baseConsole, session, sourceReference.name(),
+                server == null ? "No server selected" : server.toString());
+        FarRunConsoleBridge.attach(processHandler, baseConsole);
         processHandler.startNotify();
         return new DefaultExecutionResult(console, processHandler);
     }

@@ -2,6 +2,7 @@ package dev.farrun.run.execution.demo;
 
 import com.intellij.execution.process.ProcessHandler;
 import com.intellij.execution.process.ProcessOutputTypes;
+import dev.farrun.run.execution.console.ConsoleReporter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -19,16 +20,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class DemoProcessHandler extends ProcessHandler {
 
     public static final List<String> DEMO_MESSAGES = List.of(
-            "[FarRun] Starting remote execution...",
-            "[FarRun] Preparing local build...",
-            "[FarRun] Local build completed.",
-            "[FarRun] Connecting to SSH server...",
-            "[FarRun] SSH connection established.",
-            "[FarRun] Uploading application files...",
-            "[FarRun] Upload completed.",
-            "[FarRun] Starting remote JVM...",
-            "[FarRun] Application started successfully!",
-            "[FarRun] Demo execution completed."
+            "Remote execution — demo application",
+            "Preparing local runtime",
+            "Local runtime ready",
+            "Connecting SSH",
+            "SSH connected",
+            "Uploading runtime — 12/18 files, 7.9 MiB / 11.7 MiB (67%)",
+            "Runtime uploaded",
+            "Starting remote JVM",
+            "Remote JVM started",
+            "Demo execution completed"
     );
 
     private static final long DEMO_DELAY_MILLIS = 400;
@@ -119,12 +120,22 @@ public final class DemoProcessHandler extends ProcessHandler {
             if (terminated.get()) {
                 return;
             }
-            notifyTextAvailable(messages.get(messageIndex) + System.lineSeparator(), ProcessOutputTypes.STDOUT);
+            report(messageIndex, messages.get(messageIndex));
             if (messageIndex + 1 == messages.size()) {
                 finish(0);
             } else {
                 scheduleMessage(messageIndex + 1);
             }
+        }
+    }
+
+    private void report(int index, String message) {
+        ConsoleReporter reporter = new ConsoleReporter(this::notifyTextAvailable);
+        switch (index) {
+            case 0, 1, 3, 7 -> reporter.start(message);
+            case 5 -> reporter.progress(message);
+            case 2, 4, 6, 8, 9 -> reporter.success(message);
+            default -> reporter.info(message);
         }
     }
 

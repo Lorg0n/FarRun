@@ -8,6 +8,12 @@ import dev.farrun.server.SecretStore;
 import dev.farrun.server.Server;
 import dev.farrun.server.connection.RemoteSshSession;
 import dev.farrun.run.execution.lifecycle.ExecutionCancellation;
+import dev.farrun.run.execution.console.ConsoleReporter;
+import dev.farrun.run.execution.console.LineBuffer;
+import dev.farrun.run.execution.ui.ExecutionSession;
+import dev.farrun.run.execution.ui.ExecutionStage;
+import dev.farrun.run.execution.ui.ExecutionStatus;
+import dev.farrun.run.execution.ui.StageStatus;
 import dev.farrun.run.execution.java.JavaRuntime;
 import dev.farrun.run.execution.java.RemoteJavaRuntimeManager;
 import org.apache.sshd.client.channel.ClientChannel;
@@ -26,6 +32,8 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -53,6 +61,10 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
     private volatile @Nullable ClientChannel channel;
     private volatile @Nullable String remoteDirectory;
     private volatile @Nullable String remoteJava;
+    private volatile @Nullable ExecutionSession executionSession;
+    private final @NotNull ConsoleReporter reporter = new ConsoleReporter((text, type) -> {
+        if (!terminated.get()) notifyTextAvailable(text, type);
+    });
 
     public RemoteJavaProcessHandler(
             @NotNull Project project,
@@ -61,6 +73,8 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
     ) {
         this(project, ignored -> runtime, server, new PasswordSafeSecretStore());
     }
+
+    public void setExecutionSession(@NotNull ExecutionSession session) { executionSession = session; }
 
     public RemoteJavaProcessHandler(
             @NotNull Project project,
@@ -86,6 +100,7 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
     @Override
     protected void destroyProcessImpl() {
         cancellation.cancel();
+        state(ExecutionStatus.STOPPED, activeStage(), StageStatus.CANCELLED);
         closeActiveResources();
         finish(STOP_EXIT_CODE);
     }
@@ -108,44 +123,71 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
     private void runRemoteProcess() {
         int exitCode = 1;
         try {
-            emit("[FarRun] Preparing local build...");
-            runtime = runtimeFactory.create(cancellation);
+            reporter.start("Remote execution");
+            state(ExecutionStatus.BUILDING, ExecutionStage.BUILD, StageStatus.IN_PROGRESS);
+            reporter.info("Target: " + server.username() + "@" + server.host() + ":" + server.port());
+            long localPreparation = reporter.started();
+            reporter.start("Preparing local runtime");
+            runtime = runtimeFactory instanceof ReportingRuntimeFactory reporting
+                    ? reporting.create(cancellation, reporter) : runtimeFactory.create(cancellation);
             cancellation.check();
-            emit("[FarRun] Local build completed.");
-            emit("[FarRun] Connecting to " + server.username() + "@" + server.host() + ":" + server.port());
+            reporter.success("Local runtime ready", localPreparation);
+            state(ExecutionStatus.PREPARING, ExecutionStage.BUILD, StageStatus.SUCCESS);
+            long connecting = reporter.started();
+            reporter.start("Connecting SSH");
+            state(ExecutionStatus.CONNECTING, ExecutionStage.SSH, StageStatus.IN_PROGRESS);
             RemoteSshSession session = RemoteSshSession.open(server, secrets);
             ssh = session;
             cancellation.check();
-            emit("[FarRun] SSH connection established.");
-            emit("[FarRun] Required Java: " + runtime.requiredJavaMajor());
-            emit("[FarRun] Checking remote runtime...");
+            reporter.success("SSH connected", connecting);
+            state(ExecutionStatus.PREPARING, ExecutionStage.SSH, StageStatus.SUCCESS);
+            reporter.info("Required Java: " + runtime.requiredJavaMajor());
+            javaVersion(runtime.requiredJavaMajor());
+            long javaPreparation = reporter.started();
+            reporter.start("Preparing remote Java");
+            state(ExecutionStatus.INSTALLING_RUNTIME, ExecutionStage.RUNTIME, StageStatus.IN_PROGRESS);
             remoteJava = new RemoteJavaRuntimeManager().ensure(
                     session,
                     runtime.requiredJavaMajor(),
                     cancellation,
-                    this::emit
+                    message -> reporter.info(message.replace("[FarRun] ", ""))
             );
+            reporter.success("Remote Java ready", javaPreparation);
+            state(ExecutionStatus.PREPARING, ExecutionStage.RUNTIME, StageStatus.SUCCESS);
 
             remoteDirectory = "/tmp/farrun/" + UUID.randomUUID();
             executeSetupCommand(session, "mkdir -p " + PosixCommand.quote(remoteDirectory + "/cp"));
             cancellation.check();
-            emit("[FarRun] Uploading runtime classpath...");
+            long uploading = reporter.started();
+            reporter.start("Preparing upload manifest");
+            state(ExecutionStatus.UPLOADING, ExecutionStage.UPLOAD, StageStatus.IN_PROGRESS);
             try (SftpClient sftp = SftpClientFactory.instance().createSftpClient(session.session())) {
-                uploadClasspath(sftp);
+                UploadSummary uploaded = uploadClasspath(sftp);
+                reporter.success("Runtime uploaded — " + uploaded.files() + " files, " + formatBytes(uploaded.bytes()), uploading);
+                state(ExecutionStatus.PREPARING, ExecutionStage.UPLOAD, StageStatus.SUCCESS);
             }
             // Some SSH servers enforce a very small MaxSessions value and account for a
             // just-closed SFTP channel briefly. Give the server a bounded release window.
             awaitChannelRelease();
             cancellation.check();
-            emit("[FarRun] Starting remote JVM...");
+            reporter.start("Starting remote JVM");
+            state(ExecutionStatus.STARTING, ExecutionStage.JVM, StageStatus.IN_PROGRESS);
             exitCode = executeJvm(session);
+            if (exitCode == 0) { reporter.success("Remote JVM finished"); state(ExecutionStatus.COMPLETED, ExecutionStage.RUNNING, StageStatus.SUCCESS); }
+            else if (exitCode != STOP_EXIT_CODE && currentStatus() != ExecutionStatus.CONNECTION_LOST) {
+                reporter.error("Remote JVM exited with code " + exitCode); fail(ExecutionStatus.FAILED, "Remote JVM exited with code " + exitCode);
+            }
         } catch (com.intellij.openapi.progress.ProcessCanceledException cancelled) {
             exitCode = STOP_EXIT_CODE;
+            reporter.warning("Remote execution cancelled");
+            state(ExecutionStatus.STOPPED, activeStage(), StageStatus.CANCELLED);
         } catch (Exception failure) {
             if (!cancellation.isCancelled()) {
-                emitError("[FarRun] Remote execution failed: " + safeMessage(failure));
+                reporter.error("Remote execution failed: " + safeMessage(failure));
             }
             exitCode = cancellation.isCancelled() ? STOP_EXIT_CODE : 1;
+            if (cancellation.isCancelled()) state(ExecutionStatus.STOPPED, activeStage(), StageStatus.CANCELLED);
+            else fail(ExecutionStatus.FAILED, safeMessage(failure));
         } finally {
             cleanupRemoteDirectory();
             closeActiveResources();
@@ -154,31 +196,54 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
         }
     }
 
-    private void uploadClasspath(@NotNull SftpClient sftp) throws IOException {
+    private @NotNull UploadSummary uploadClasspath(@NotNull SftpClient sftp) throws IOException {
         JavaRuntime currentRuntime = requireRuntime();
-        int index = 0;
-        for (Path local : currentRuntime.classpath()) {
+        List<UploadEntry> manifest = new ArrayList<>();
+        for (int index = 0; index < currentRuntime.classpath().size(); index++) {
+            Path local = currentRuntime.classpath().get(index);
             cancellation.check();
             if (!Files.exists(local)) {
                 throw new IOException("Runtime classpath entry does not exist: " + local.getFileName());
             }
-            uploadPath(sftp, local, remoteDirectory + "/cp/" + index + "-" + safeFileName(local.getFileName().toString()));
-            index++;
+            String target = remoteDirectory + "/cp/" + index + "-" + safeFileName(local.getFileName().toString());
+            collectUploadEntries(local, target, manifest);
+        }
+        long total = manifest.stream().mapToLong(UploadEntry::size).sum();
+        reporter.info("Upload manifest: " + manifest.size() + " files, " + formatBytes(total));
+        reporter.start("Uploading runtime");
+        long uploaded = 0;
+        int complete = 0;
+        int lastPercent = -1;
+        for (UploadEntry entry : manifest) {
+            cancellation.check();
+            mkdirParents(sftp, entry.remote());
+            sftp.put(entry.local(), entry.remote());
+            uploaded += entry.size();
+            complete++;
+            int percent = total == 0 ? 100 : (int) (uploaded * 100 / total);
+            if (percent >= lastPercent + 5 || complete == manifest.size()) {
+                reporter.progress(complete + "/" + manifest.size() + " files, " + formatBytes(uploaded)
+                        + " / " + formatBytes(total) + " (" + percent + "%)");
+                lastPercent = percent;
+            }
+        }
+        return new UploadSummary(manifest.size(), total);
+    }
+
+    private void collectUploadEntries(Path local, String remote, List<UploadEntry> manifest) throws IOException {
+        if (Files.isRegularFile(local)) { manifest.add(new UploadEntry(local, remote, Files.size(local))); return; }
+        if (Files.isDirectory(local)) {
+            try (var entries = Files.list(local)) {
+                for (Path child : entries.sorted(Comparator.comparing(Path::toString)).toList())
+                    collectUploadEntries(child, remote + "/" + safeFileName(child.getFileName().toString()), manifest);
+            }
         }
     }
 
-    private void uploadPath(@NotNull SftpClient sftp, @NotNull Path local, @NotNull String remote) throws IOException {
-        if (Files.isDirectory(local)) {
-            mkdirIfMissing(sftp, remote);
-            try (var entries = Files.list(local)) {
-                for (Path child : entries.sorted().toList()) {
-                    cancellation.check();
-                    uploadPath(sftp, child, remote + "/" + safeFileName(child.getFileName().toString()));
-                }
-            }
-        } else if (Files.isRegularFile(local)) {
-            sftp.put(local, remote);
-        }
+    private static void mkdirParents(SftpClient sftp, String remote) {
+        String[] parts = remote.substring(1, remote.lastIndexOf('/')).split("/");
+        String current = "";
+        for (String part : parts) { current += "/" + part; mkdirIfMissing(sftp, current); }
     }
 
     private int executeJvm(@NotNull RemoteSshSession session) throws IOException {
@@ -191,8 +256,13 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
         command.add(currentRuntime.mainClass());
         command.addAll(currentRuntime.programArguments());
 
+        reporter.command(safeCommand(command));
+
         ClientChannel remoteChannel = openJvmChannel(session,
                 "cd " + PosixCommand.quote(remoteDirectory) + " && exec " + PosixCommand.join(command));
+        // A command channel opening is the first confirmation that the remote JVM launch was accepted.
+        state(ExecutionStatus.RUNNING, ExecutionStage.JVM, StageStatus.SUCCESS);
+        state(ExecutionStatus.RUNNING, ExecutionStage.RUNNING, StageStatus.IN_PROGRESS);
         while (true) {
             if (cancellation.isCancelled()) {
                 remoteChannel.close(true);
@@ -210,7 +280,8 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
                 }
                 Integer status = remoteChannel.getExitStatus();
                 if (status == null) {
-                    emitError("[FarRun] SSH connection lost before the remote JVM reported an exit code.");
+                    reporter.error("SSH connection lost before the remote JVM reported an exit code.");
+                    fail(ExecutionStatus.CONNECTION_LOST, "SSH connection lost; process status unknown");
                     return 255;
                 }
                 return status;
@@ -224,8 +295,8 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
         for (int attempt = 1; attempt <= CHANNEL_OPEN_ATTEMPTS; attempt++) {
             cancellation.check();
             ClientChannel candidate = session.session().createExecChannel(command);
-            candidate.setOut(new ConsoleOutput(ProcessOutputTypes.STDOUT));
-            candidate.setErr(new ConsoleOutput(ProcessOutputTypes.STDERR));
+            candidate.setOut(new ConsoleOutput(false));
+            candidate.setErr(new ConsoleOutput(true));
             try {
                 candidate.open().verify();
                 channel = candidate;
@@ -331,18 +402,6 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
         }
     }
 
-    private void emit(@NotNull String text) {
-        if (!terminated.get()) {
-            notifyTextAvailable(text + System.lineSeparator(), ProcessOutputTypes.STDOUT);
-        }
-    }
-
-    private void emitError(@NotNull String text) {
-        if (!terminated.get()) {
-            notifyTextAvailable(text + System.lineSeparator(), ProcessOutputTypes.STDERR);
-        }
-    }
-
     private static void mkdirIfMissing(@NotNull SftpClient sftp, @NotNull String path) {
         try {
             sftp.mkdir(path);
@@ -359,6 +418,66 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
         String message = failure.getMessage();
         return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
     }
+
+    private void state(ExecutionStatus status, ExecutionStage stage, StageStatus stageStatus) {
+        ExecutionSession session = executionSession;
+        if (session != null) session.update(status, stage, stageStatus);
+    }
+    private void javaVersion(int major) { ExecutionSession session = executionSession; if (session != null) session.javaVersion(major); }
+    private void fail(ExecutionStatus status, String reason) { ExecutionSession session = executionSession; if (session != null) session.fail(status, activeStage(), reason); }
+    private ExecutionStage activeStage() {
+        ExecutionSession session = executionSession;
+        if (session == null) return ExecutionStage.BUILD;
+        for (ExecutionStage stage : ExecutionStage.values()) if (session.snapshot().stages().get(stage) == StageStatus.IN_PROGRESS) return stage;
+        return ExecutionStage.JVM;
+    }
+    private @Nullable ExecutionStatus currentStatus() {
+        ExecutionSession session = executionSession;
+        return session == null ? null : session.snapshot().status();
+    }
+
+    static @NotNull String safeCommand(@NotNull List<String> arguments) {
+        List<String> safe = new ArrayList<>();
+        for (int i = 0; i < arguments.size(); i++) {
+            String argument = arguments.get(i);
+            if (argument.equals("-cp") || argument.equals("-classpath")) { safe.add(argument); if (++i < arguments.size()) safe.add("<uploaded-classpath>"); continue; }
+            if (argument.contains("://")) { safe.add(redactUrl(argument)); continue; }
+            if (isSensitiveName(argument)) {
+                int equals = argument.indexOf('=');
+                if (equals >= 0) { safe.add(argument.substring(0, equals + 1) + "<redacted>"); }
+                else { safe.add(argument); if (++i < arguments.size()) safe.add("<redacted>"); }
+                continue;
+            }
+            safe.add(redact(argument));
+        }
+        return PosixCommand.join(safe);
+    }
+
+    private static boolean isSensitiveName(String value) {
+        String lower = value.toLowerCase(java.util.Locale.ROOT);
+        return lower.matches(".*(password|passwd|token|secret|api[_-]?key|credential).*" );
+    }
+
+    private static String redact(String value) {
+        if (isSensitiveName(value)) {
+            int equals = value.indexOf('=');
+            return equals >= 0 ? value.substring(0, equals + 1) + "<redacted>" : "<redacted>";
+        }
+        return redactUrl(value);
+    }
+
+    private static String redactUrl(String value) {
+        return value.replaceAll("([a-zA-Z][a-zA-Z0-9+.-]*://)([^/@\\s:]+):([^@\\s]+)@", "$1<redacted>@");
+    }
+
+    private static String formatBytes(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return String.format(java.util.Locale.ROOT, "%.1f KiB", bytes / 1024.0);
+        return String.format(java.util.Locale.ROOT, "%.1f MiB", bytes / 1024.0 / 1024.0);
+    }
+
+    private record UploadEntry(Path local, String remote, long size) { }
+    private record UploadSummary(int files, long bytes) { }
 
     private @NotNull JavaRuntime requireRuntime() {
         JavaRuntime currentRuntime = runtime;
@@ -381,11 +500,22 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
         JavaRuntime create(@NotNull ExecutionCancellation cancellation) throws Exception;
     }
 
-    private final class ConsoleOutput extends OutputStream {
-        private final @NotNull com.intellij.openapi.util.Key<?> type;
+    /** Optional richer preparation hook; retained alongside RuntimeFactory for compatibility. */
+    @FunctionalInterface
+    public interface ReportingRuntimeFactory extends RuntimeFactory {
+        JavaRuntime create(@NotNull ExecutionCancellation cancellation, @NotNull ConsoleReporter reporter) throws Exception;
 
-        private ConsoleOutput(@NotNull com.intellij.openapi.util.Key<?> type) {
-            this.type = type;
+        @Override
+        default JavaRuntime create(@NotNull ExecutionCancellation cancellation) throws Exception {
+            return create(cancellation, new ConsoleReporter((text, type) -> { }));
+        }
+    }
+
+    private final class ConsoleOutput extends OutputStream {
+        private final @NotNull LineBuffer buffer;
+
+        private ConsoleOutput(boolean stderr) {
+            buffer = new LineBuffer(line -> { if (!terminated.get()) reporter.application(line, stderr); });
         }
 
         @Override
@@ -396,8 +526,10 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
         @Override
         public void write(byte[] bytes, int offset, int length) {
             if (!terminated.get() && length > 0) {
-                notifyTextAvailable(new String(bytes, offset, length, java.nio.charset.StandardCharsets.UTF_8), type);
+                buffer.append(bytes, offset, length);
             }
         }
+
+        @Override public void close() { buffer.flush(); }
     }
 }

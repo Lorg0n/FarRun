@@ -31,7 +31,7 @@ class DemoProcessHandlerTest {
             handler.startNotify();
 
             assertTrue(listener.awaitTermination());
-            assertEquals(DemoProcessHandler.DEMO_MESSAGES, listener.messages());
+            assertEquals(DemoProcessHandler.DEMO_MESSAGES, listener.messages().stream().map(DemoProcessHandlerTest::content).toList());
             assertEquals(0, listener.exitCode());
             assertEquals(1, listener.terminationCount());
         } finally {
@@ -86,12 +86,17 @@ class DemoProcessHandlerTest {
 
             assertTrue(firstListener.awaitTermination());
             assertTrue(secondListener.awaitTermination());
-            assertEquals(DemoProcessHandler.DEMO_MESSAGES, firstListener.messages());
-            assertEquals(DemoProcessHandler.DEMO_MESSAGES, secondListener.messages());
+            assertEquals(DemoProcessHandler.DEMO_MESSAGES, firstListener.messages().stream().map(DemoProcessHandlerTest::content).toList());
+            assertEquals(DemoProcessHandler.DEMO_MESSAGES, secondListener.messages().stream().map(DemoProcessHandlerTest::content).toList());
         } finally {
             firstScheduler.shutdownNow();
             secondScheduler.shutdownNow();
         }
+    }
+
+    private static String content(String value) {
+        return value.replaceAll("\\u001B\\[[;\\d]*m", "")
+                .replaceFirst("^\\[\\d{2}:\\d{2}:\\d{2}] \\[[^]]+] ", "");
     }
 
     private static final class RecordingListener extends ProcessAdapter {

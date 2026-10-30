@@ -39,7 +39,8 @@ public final class GradleStrategy implements ExecutionStrategy {
             ), 1);
         }
         return new RemoteJavaProcessHandler(project,
-                cancellation -> new GradleRuntimePreparer().prepare(source, cancellation),
+                (RemoteJavaProcessHandler.ReportingRuntimeFactory) (cancellation, reporter) ->
+                        new GradleRuntimePreparer().prepare(source, cancellation, reporter),
                 server, new PasswordSafeSecretStore());
     }
 }

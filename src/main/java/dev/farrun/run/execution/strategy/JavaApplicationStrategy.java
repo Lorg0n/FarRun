@@ -28,7 +28,8 @@ public final class JavaApplicationStrategy implements ExecutionStrategy {
     public @NotNull ProcessHandler createProcessHandler() {
         return new RemoteJavaProcessHandler(
                 project,
-                cancellation -> new JavaRuntimePreparer().prepare(project, source, cancellation),
+                (RemoteJavaProcessHandler.ReportingRuntimeFactory) (cancellation, reporter) ->
+                        new JavaRuntimePreparer().prepare(project, source, cancellation, reporter),
                 server,
                 new dev.farrun.server.PasswordSafeSecretStore()
         );

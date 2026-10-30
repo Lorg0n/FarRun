@@ -24,10 +24,15 @@ class ExecutionStrategyTest {
 
         assertTrue(listener.terminated.await(1, TimeUnit.SECONDS));
         assertEquals(List.of(
-                "[FarRun] Source type: Gradle",
-                "[FarRun] Remote Gradle execution is not implemented yet."
-        ), listener.messages);
+                "Source type: Gradle",
+                "Remote Gradle execution is not implemented yet."
+        ), listener.messages.stream().map(ExecutionStrategyTest::content).toList());
         assertEquals(1, listener.exitCode);
+    }
+
+    private static String content(String value) {
+        return value.replaceAll("\\u001B\\[[;\\d]*m", "")
+                .replaceFirst("^\\[\\d{2}:\\d{2}:\\d{2}] \\[[^]]+] ", "");
     }
 
     @Test

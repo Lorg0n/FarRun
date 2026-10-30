@@ -11,6 +11,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.CompilerModuleExtension;
 import com.intellij.util.execution.ParametersListUtil;
 import dev.farrun.run.execution.lifecycle.ExecutionCancellation;
+import dev.farrun.run.execution.console.ConsoleReporter;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.file.Files;
@@ -30,6 +31,15 @@ public final class JavaRuntimePreparer {
             @NotNull ApplicationConfiguration configuration,
             @NotNull ExecutionCancellation cancellation
     ) throws Exception {
+        return prepare(project, configuration, cancellation, null);
+    }
+
+    public @NotNull JavaRuntime prepare(
+            @NotNull Project project,
+            @NotNull ApplicationConfiguration configuration,
+            @NotNull ExecutionCancellation cancellation,
+            ConsoleReporter reporter
+    ) throws Exception {
         String mainClass = onEdt(configuration::getMainClassName);
         if (mainClass == null || mainClass.isBlank()) {
             throw new IllegalArgumentException("The Java Application has no main class.");
@@ -38,7 +48,10 @@ public final class JavaRuntimePreparer {
         if (module == null) {
             throw new IllegalArgumentException("The Java Application has no module.");
         }
+        long compilation = System.nanoTime();
+        if (reporter != null) reporter.start("Compiling local module");
         compile(project, module, mainClass, cancellation);
+        if (reporter != null) reporter.success("Local module compiled", compilation);
         int requiredJavaMajor = JavaRuntimeRequirement.resolve(project, module, mainClass);
 
         JavaRuntime runtime = onEdt(() -> {
