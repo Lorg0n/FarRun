@@ -59,7 +59,27 @@ intellijPlatform {
         version = providers.gradleProperty("pluginVersion")
 
         description = """
-            FarRun provides the foundation for running Java applications on remote Linux servers.
+            <p>Run Java applications on remote Linux servers without leaving IntelliJ IDEA.</p>
+            <p>FarRun builds locally, connects over SSH, prepares the required Java runtime,
+            uploads the application classpath, and starts the remote JVM from the standard Run workflow.</p>
+            <ul>
+              <li>Java Application and supported Gradle application configurations</li>
+              <li>SSH server management with IDE Password Safe integration</li>
+              <li>Per-run status panel and native colored lifecycle logs</li>
+            </ul>
+            <h3>Quick start</h3>
+            <ol>
+              <li>Open <b>Settings | Tools | FarRun</b>, add an SSH server, and test the connection.</li>
+              <li>Open <b>Run | Edit Configurations</b>, add a <b>FarRun</b> configuration, and select a Java Application or supported Gradle configuration.</li>
+              <li>Select the saved server and run the configuration. FarRun reports each confirmed remote execution stage in the Run tool window.</li>
+            </ol>
+        """.trimIndent()
+
+        changeNotes = """
+            <ul>
+              <li>Remote Java and Gradle execution over SSH</li>
+              <li>Runtime provisioning, classpath upload, and process lifecycle visualization</li>
+            </ul>
         """.trimIndent()
 
         ideaVersion {
