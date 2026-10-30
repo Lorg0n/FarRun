@@ -1,64 +1,82 @@
 # FarRun
 
-FarRun is an IntelliJ IDEA plugin foundation for a future workflow that will build
-Java applications locally and run them on remote Linux servers. Remote execution,
-SSH, SFTP, debugging, and Run Configuration integration are intentionally not part
-of this first version.
+<p align="center">
+  <img src="src/main/resources/icons/farrun.svg" width="96" alt="FarRun logo">
+</p>
+
+**FarRun** is an IntelliJ IDEA plugin that builds a Java application locally and runs it on a selected Linux server over SSH. It keeps the familiar IntelliJ Run workflow while making remote execution visible: connection, Java runtime, upload, JVM lifecycle, application output, and failures all remain in the standard Run tool window.
+
+## What it does
+
+- Runs IntelliJ **Java Application** configurations remotely.
+- Runs supported Gradle application tasks: `run`, `bootRun`, and `bootJar`.
+- Compiles/builds locally, uploads the resolved runtime classpath through SFTP, then starts the remote JVM.
+- Detects the required Java major version and provisions a user-owned Eclipse Temurin runtime on the server when needed.
+- Stores passwords, private-key passphrases, and host-key data in the IDE Password Safe.
+- Provides a per-run status panel for build, SSH, runtime, upload, JVM start, and process state.
+- Separates FarRun lifecycle records from remote application stdout and stderr in the normal Run console.
+- Supports Stop and Rerun through the standard IntelliJ Run controls.
 
 ## Requirements
 
-- JDK 25 or newer, with JDK 25 selected as the Gradle JVM.
-- IntelliJ IDEA 2026.2 or newer with the Plugin DevKit enabled.
+- IntelliJ IDEA 2026.2 or newer.
+- JDK 25 or newer, selected as the Gradle JVM when developing the plugin.
+- A reachable Linux host with SSH and SFTP enabled.
+- Password authentication or an OpenSSH private key for the remote server.
 
-The project targets IntelliJ IDEA 2026.2.3 and uses the IntelliJ Platform Gradle
-Plugin 2.x. The Gradle wrapper downloads the required Gradle version automatically.
+FarRun does not require root access on the remote machine. Managed Java runtimes are stored below `~/.farrun/runtimes` for the SSH user.
 
-## Open the project
+## Configure an SSH server
 
-1. In IntelliJ IDEA, select **File | Open** and choose the `FarRun` directory.
-2. Trust the project if prompted.
-3. Import it as a Gradle project and select JDK 25 as the Gradle JVM.
+Open **Settings | Tools | FarRun** and add a server. Enter its display name, hostname, port, username, and either a password or private key. Use **Test Connection** before saving.
 
-## Run a development IDE
+![FarRun SSH server settings](docs/images/farrun-server-settings.png)
 
-From the project directory:
+## Create a FarRun run configuration
+
+1. Open **Run | Edit Configurations…** and add a **FarRun** configuration.
+2. Select an existing Java Application or supported Gradle application configuration.
+3. Select the saved remote server.
+4. Run it as usual.
+
+FarRun reads the source configuration’s latest class, VM, and program arguments for every launch.
+
+![FarRun run configuration](docs/images/farrun-run-configuration.png)
+
+## Run console
+
+The regular Run tool window remains the console. FarRun adds a compact status header with the selected server, required Java version, elapsed time, lifecycle state, and confirmed milestones:
+
+`Build → SSH → Runtime → Upload → JVM → Running`
+
+FarRun messages are rendered with native IntelliJ console colors. Application stdout stays neutral, stderr stays in the IDE error style, and stack traces remain available in the same console. A lost SSH connection is reported as **Connection Lost / process status unknown**, not as a stopped process.
+
+![FarRun remote execution console](docs/images/farrun-run-console.png)
+
+## Develop the plugin
+
+Open the repository as a Gradle project and run an isolated IDE:
 
 ```bash
 ./gradlew runIde
 ```
 
-This starts an isolated IntelliJ IDEA sandbox with FarRun installed. In that IDE,
-open **Tools | FarRun: Hello**. A standard IntelliJ notification should show:
-
-```text
-FarRun plugin is running successfully!
-```
-
-## Build the plugin ZIP
+Build the plugin ZIP:
 
 ```bash
 ./gradlew buildPlugin
 ```
 
-The ZIP is written to `build/distributions/`.
+The ZIP is written to `build/distributions/`. Install it in a regular IDE through **Settings | Plugins | ⚙ | Install Plugin from Disk…**.
 
-## Install in a regular IntelliJ IDEA
-
-1. Open **Settings | Plugins**.
-2. Select the gear menu and choose **Install Plugin from Disk...**.
-3. Choose the ZIP from `build/distributions/`.
-4. Restart IntelliJ IDEA when prompted.
-
-## Useful checks
+## Checks
 
 ```bash
-./gradlew build
 ./gradlew test
 ./gradlew verifyPlugin
 ```
 
-If the exact target IDE is already installed locally, its SDK can be reused instead
-of downloading it:
+To reuse an already installed target IDE while developing:
 
 ```bash
 ./gradlew build -PlocalIdeaPath=/path/to/idea
