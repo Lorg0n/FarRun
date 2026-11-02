@@ -1,8 +1,8 @@
 package dev.farrun.run.execution.console;
 
-import com.intellij.execution.process.ProcessAdapter;
 import com.intellij.execution.process.ProcessEvent;
 import com.intellij.execution.process.ProcessHandler;
+import com.intellij.execution.process.ProcessListener;
 import com.intellij.execution.process.ProcessOutputTypes;
 import com.intellij.execution.ui.ConsoleView;
 import com.intellij.execution.ui.ConsoleViewContentType;
@@ -12,7 +12,7 @@ import com.intellij.openapi.editor.markup.TextAttributes;
 import org.jetbrains.annotations.NotNull;
 
 /** Renders semantic ProcessHandler output in the native console without ANSI escape sequences. */
-public final class FarRunConsoleBridge extends ProcessAdapter {
+public final class FarRunConsoleBridge implements ProcessListener {
     private static final ConsoleViewContentType FAR_INFO = type("FARRUN_INFO", JBColor.BLUE);
     private static final ConsoleViewContentType FAR_ACTIVE = type("FARRUN_ACTIVE", JBColor.BLUE);
     private static final ConsoleViewContentType FAR_SUCCESS = type("FARRUN_SUCCESS", JBColor.GREEN);

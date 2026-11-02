@@ -1,7 +1,7 @@
 package dev.farrun.run.execution.demo;
 
-import com.intellij.execution.process.ProcessAdapter;
 import com.intellij.execution.process.ProcessEvent;
+import com.intellij.execution.process.ProcessListener;
 import com.intellij.openapi.util.Key;
 import org.junit.jupiter.api.Test;
 
@@ -99,7 +99,7 @@ class DemoProcessHandlerTest {
                 .replaceFirst("^\\[\\d{2}:\\d{2}:\\d{2}] \\[[^]]+] ", "");
     }
 
-    private static final class RecordingListener extends ProcessAdapter {
+    private static final class RecordingListener implements ProcessListener {
         private final List<String> messages = new ArrayList<>();
         private final CountDownLatch terminated = new CountDownLatch(1);
         private final AtomicInteger terminationCount = new AtomicInteger();
