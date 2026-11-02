@@ -17,6 +17,9 @@ import dev.farrun.server.ServerStore;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /** A persisted FarRun configuration with source-specific execution strategies. */
 public final class DemoRunConfiguration extends RunConfigurationBase<DemoRunConfigurationOptions> {
 
@@ -73,6 +76,27 @@ public final class DemoRunConfiguration extends RunConfigurationBase<DemoRunConf
         getOptions().setServerId(server == null ? null : server.id());
     }
 
+    public @NotNull List<RuntimeFileMapping> getRuntimeFiles() {
+        List<RuntimeFileMapping> result = new ArrayList<>();
+        for (String line : getOptions().getRuntimeFiles().split("\\n")) {
+            if (line.isBlank()) {
+                continue;
+            }
+            int separator = line.indexOf('\t');
+            if (separator <= 0 || separator == line.length() - 1) {
+                throw new IllegalStateException("Stored FarRun runtime file mapping is invalid.");
+            }
+            result.add(new RuntimeFileMapping(line.substring(0, separator), line.substring(separator + 1)));
+        }
+        return List.copyOf(result);
+    }
+
+    public void setRuntimeFiles(@NotNull List<RuntimeFileMapping> mappings) {
+        getOptions().setRuntimeFiles(mappings.stream()
+                .map(mapping -> mapping.alias() + "\t" + mapping.localPath())
+                .collect(java.util.stream.Collectors.joining("\n")));
+    }
+
     @Override
     public @NotNull RunProfileState getState(
             @NotNull Executor executor,
@@ -85,6 +109,6 @@ public final class DemoRunConfiguration extends RunConfigurationBase<DemoRunConf
         if (sourceReference == null) {
             throw new ExecutionException("FarRun requires a source Run Configuration.");
         }
-        return new FarRunRunState(getProject(), sourceReference, getServer());
+        return new FarRunRunState(getProject(), sourceReference, getServer(), getRuntimeFiles());
     }
 }

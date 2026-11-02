@@ -1,5 +1,8 @@
 package dev.farrun.run.execution.gradle;
 
+import com.intellij.util.execution.ParametersListUtil;
+import dev.farrun.run.execution.ApplicationDistributionRuntime;
+import dev.farrun.run.execution.RemoteRuntime;
 import dev.farrun.run.execution.java.JavaRuntime;
 import dev.farrun.run.execution.java.JavaRuntimeRequirement;
 import dev.farrun.run.execution.lifecycle.ExecutionCancellation;
@@ -12,21 +15,17 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
-/** Builds only the supported Gradle application shapes and returns their local runtime inputs. */
+/** Builds Gradle application distributions locally and returns a portable remote launch plan. */
 public final class GradleRuntimePreparer {
-    private static final Pattern MAIN_CLASS = Pattern.compile("(?:APP_MAINCLASS|MAIN_CLASS)=(?:\\\"|')?([^\\\"'\\s]+)");
-
-    public @NotNull JavaRuntime prepare(
+    public @NotNull RemoteRuntime prepare(
             @NotNull GradleRunConfiguration configuration,
             @NotNull ExecutionCancellation cancellation
     ) throws Exception {
         return prepare(configuration, cancellation, null);
     }
 
-    public @NotNull JavaRuntime prepare(
+    public @NotNull RemoteRuntime prepare(
             @NotNull GradleRunConfiguration configuration,
             @NotNull ExecutionCancellation cancellation,
             ConsoleReporter reporter
@@ -50,7 +49,7 @@ public final class GradleRuntimePreparer {
         run(wrapper, project, buildTask, cancellation, reporter);
         Path applicationProject = taskProjectDirectory(project, task);
         if (normalized.equals("run")) {
-            return applicationRuntime(applicationProject, configuration.getProject());
+            return applicationRuntime(applicationProject, configuration.getProject(), settings.getScriptParameters());
         }
         Path jar = newest(applicationProject.resolve("build/libs"), ".jar");
         if (jar == null) {
@@ -65,7 +64,11 @@ public final class GradleRuntimePreparer {
                         configuration.getProject(), null, mainClass));
     }
 
-    private static JavaRuntime applicationRuntime(Path project, com.intellij.openapi.project.Project ideaProject)
+    private static ApplicationDistributionRuntime applicationRuntime(
+            Path project,
+            com.intellij.openapi.project.Project ideaProject,
+            String scriptParameters
+    )
             throws IOException {
         Path install = newestDirectory(project.resolve("build/install"));
         if (install == null) {
@@ -75,24 +78,44 @@ public final class GradleRuntimePreparer {
         if (!Files.isDirectory(bin)) {
             throw new IOException("Gradle application distribution has no bin directory.");
         }
-        Path script;
-        try (var scripts = Files.list(bin)) {
-            script = scripts.filter(Files::isRegularFile).findFirst().orElse(null);
+        List<Path> scripts;
+        try (var entries = Files.list(bin)) {
+            scripts = entries.filter(Files::isRegularFile)
+                    .filter(path -> !path.getFileName().toString().endsWith(".bat"))
+                    .toList();
         }
-        if (script == null) {
-            throw new IOException("Gradle application distribution has no start script.");
+        if (scripts.size() != 1) {
+            throw new IOException("Gradle application distribution must contain exactly one Unix start script; found "
+                    + scripts.size() + ".");
         }
-        Matcher matcher = MAIN_CLASS.matcher(Files.readString(script));
-        if (!matcher.find()) {
-            throw new IOException("Could not determine the Gradle Application main class from its start script.");
+        return new ApplicationDistributionRuntime(
+                install,
+                install.relativize(scripts.getFirst()).toString().replace('\\', '/'),
+                programArguments(scriptParameters),
+                JavaRuntimeRequirement.resolve(ideaProject, null, scripts.getFirst().getFileName().toString())
+        );
+    }
+
+    static @NotNull List<String> programArguments(String scriptParameters) {
+        if (scriptParameters == null || scriptParameters.isBlank()) {
+            return List.of();
         }
-        Path lib = install.resolve("lib");
-        List<Path> classpath;
-        try (var libraries = Files.list(lib)) {
-            classpath = libraries.filter(Files::isRegularFile).sorted().toList();
+        String trimmed = scriptParameters.trim();
+        if (trimmed.startsWith("--args=")) {
+            return ParametersListUtil.parse(unquote(trimmed.substring("--args=".length())));
         }
-        return new JavaRuntime(matcher.group(1), classpath, List.of(), List.of(),
-                JavaRuntimeRequirement.resolve(ideaProject, null, matcher.group(1)));
+        if (trimmed.startsWith("--args ")) {
+            return ParametersListUtil.parse(unquote(trimmed.substring("--args ".length())));
+        }
+        throw unsupported("Gradle Application accepts only one --args value in FarRun; received: " + scriptParameters);
+    }
+
+    private static @NotNull String unquote(@NotNull String value) {
+        if (value.length() >= 2 && ((value.startsWith("\"") && value.endsWith("\""))
+                || (value.startsWith("'") && value.endsWith("'")))) {
+            return value.substring(1, value.length() - 1);
+        }
+        return value;
     }
 
     private static void run(Path wrapper, Path project, String task, ExecutionCancellation cancellation, ConsoleReporter reporter) throws Exception {

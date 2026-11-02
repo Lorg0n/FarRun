@@ -3,6 +3,9 @@ package dev.farrun.run.execution.remote;
 import com.intellij.execution.process.ProcessHandler;
 import com.intellij.execution.process.ProcessOutputTypes;
 import com.intellij.openapi.project.Project;
+import dev.farrun.run.execution.ApplicationDistributionRuntime;
+import dev.farrun.run.execution.RemoteRuntime;
+import dev.farrun.run.execution.RuntimeInputs;
 import dev.farrun.server.PasswordSafeSecretStore;
 import dev.farrun.server.SecretStore;
 import dev.farrun.server.Server;
@@ -46,9 +49,10 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
 
     private final @NotNull Project project;
     private final @NotNull RuntimeFactory runtimeFactory;
-    private @Nullable JavaRuntime runtime;
+    private @Nullable RemoteRuntime runtime;
     private final @NotNull Server server;
     private final @NotNull SecretStore secrets;
+    private final @NotNull RuntimeInputs runtimeInputs;
     private final @NotNull ExecutorService worker = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "FarRun remote Java execution");
         thread.setDaemon(true);
@@ -71,7 +75,7 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
             @NotNull JavaRuntime runtime,
             @NotNull Server server
     ) {
-        this(project, ignored -> runtime, server, new PasswordSafeSecretStore());
+        this(project, ignored -> runtime, server, new PasswordSafeSecretStore(), new RuntimeInputs(projectDirectory(project), List.of()));
     }
 
     public void setExecutionSession(@NotNull ExecutionSession session) { executionSession = session; }
@@ -80,12 +84,14 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
             @NotNull Project project,
             @NotNull RuntimeFactory runtimeFactory,
             @NotNull Server server,
-            @NotNull SecretStore secrets
+            @NotNull SecretStore secrets,
+            @NotNull RuntimeInputs runtimeInputs
     ) {
         this.project = project;
         this.runtimeFactory = runtimeFactory;
         this.server = server;
         this.secrets = secrets;
+        this.runtimeInputs = runtimeInputs;
     }
 
     @Override
@@ -131,6 +137,7 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
             runtime = runtimeFactory instanceof ReportingRuntimeFactory reporting
                     ? reporting.create(cancellation, reporter) : runtimeFactory.create(cancellation);
             cancellation.check();
+            validateRuntimeInputs(requireRuntime());
             reporter.success("Local runtime ready", localPreparation);
             state(ExecutionStatus.PREPARING, ExecutionStage.BUILD, StageStatus.SUCCESS);
             long connecting = reporter.started();
@@ -162,7 +169,7 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
             reporter.start("Preparing upload manifest");
             state(ExecutionStatus.UPLOADING, ExecutionStage.UPLOAD, StageStatus.IN_PROGRESS);
             try (SftpClient sftp = SftpClientFactory.instance().createSftpClient(session.session())) {
-                UploadSummary uploaded = uploadClasspath(sftp);
+                UploadSummary uploaded = uploadRuntime(sftp);
                 reporter.success("Runtime uploaded — " + uploaded.files() + " files, " + formatBytes(uploaded.bytes()), uploading);
                 state(ExecutionStatus.PREPARING, ExecutionStage.UPLOAD, StageStatus.SUCCESS);
             }
@@ -196,17 +203,27 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
         }
     }
 
-    private @NotNull UploadSummary uploadClasspath(@NotNull SftpClient sftp) throws IOException {
-        JavaRuntime currentRuntime = requireRuntime();
+    private @NotNull UploadSummary uploadRuntime(@NotNull SftpClient sftp) throws IOException {
+        RemoteRuntime currentRuntime = requireRuntime();
         List<UploadEntry> manifest = new ArrayList<>();
-        for (int index = 0; index < currentRuntime.classpath().size(); index++) {
-            Path local = currentRuntime.classpath().get(index);
-            cancellation.check();
-            if (!Files.exists(local)) {
-                throw new IOException("Runtime classpath entry does not exist: " + local.getFileName());
+        if (currentRuntime instanceof JavaRuntime javaRuntime) {
+            for (int index = 0; index < javaRuntime.classpath().size(); index++) {
+                Path local = javaRuntime.classpath().get(index);
+                cancellation.check();
+                if (!Files.exists(local)) {
+                    throw new IOException("Runtime classpath entry does not exist: " + local.getFileName());
+                }
+                String target = remoteDirectory + "/cp/" + index + "-" + safeFileName(local.getFileName().toString());
+                collectUploadEntries(local, target, manifest, false);
             }
-            String target = remoteDirectory + "/cp/" + index + "-" + safeFileName(local.getFileName().toString());
-            collectUploadEntries(local, target, manifest);
+        } else if (currentRuntime instanceof ApplicationDistributionRuntime distribution) {
+            collectUploadEntries(distribution.distributionDirectory(), remoteDirectory + "/app", manifest, true);
+        } else {
+            throw new IllegalStateException("Unsupported remote runtime: " + currentRuntime.getClass().getName());
+        }
+        for (var input : runtimeInputs.files().entrySet()) {
+            collectUploadEntries(input.getValue(), remoteDirectory + "/inputs/" + input.getKey() + "/"
+                    + safeFileName(input.getValue().getFileName().toString()), manifest, false);
         }
         long total = manifest.stream().mapToLong(UploadEntry::size).sum();
         reporter.info("Upload manifest: " + manifest.size() + " files, " + formatBytes(total));
@@ -230,14 +247,20 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
         return new UploadSummary(manifest.size(), total);
     }
 
-    private void collectUploadEntries(Path local, String remote, List<UploadEntry> manifest) throws IOException {
+    private void collectUploadEntries(Path local, String remote, List<UploadEntry> manifest, boolean preserveNames)
+            throws IOException {
         if (Files.isRegularFile(local)) { manifest.add(new UploadEntry(local, remote, Files.size(local))); return; }
         if (Files.isDirectory(local)) {
             try (var entries = Files.list(local)) {
                 for (Path child : entries.sorted(Comparator.comparing(Path::toString)).toList())
-                    collectUploadEntries(child, remote + "/" + safeFileName(child.getFileName().toString()), manifest);
+                    collectUploadEntries(child, remote + "/" + entryName(child, preserveNames), manifest, preserveNames);
             }
         }
+    }
+
+    static @NotNull String entryName(@NotNull Path path, boolean preserveNames) {
+        String name = path.getFileName().toString();
+        return preserveNames ? name : safeFileName(name);
     }
 
     private static void mkdirParents(SftpClient sftp, String remote) {
@@ -247,19 +270,32 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
     }
 
     private int executeJvm(@NotNull RemoteSshSession session) throws IOException {
-        JavaRuntime currentRuntime = requireRuntime();
-        List<String> command = new java.util.ArrayList<>();
-        command.add(requireRemoteJava());
-        command.addAll(currentRuntime.vmArguments());
-        command.add("-cp");
-        command.add(remoteClasspath());
-        command.add(currentRuntime.mainClass());
-        command.addAll(currentRuntime.programArguments());
+        RemoteRuntime currentRuntime = requireRuntime();
+        List<String> command;
+        String launch;
+        if (currentRuntime instanceof JavaRuntime javaRuntime) {
+            command = new java.util.ArrayList<>();
+            command.add(requireRemoteJava());
+            command.addAll(javaRuntime.vmArguments());
+            command.add("-cp");
+            command.add(remoteClasspath(javaRuntime));
+            command.add(javaRuntime.mainClass());
+            command.addAll(runtimeInputs.expandArguments(javaRuntime.programArguments(), remoteDirectory + "/inputs"));
+            launch = "exec " + PosixCommand.join(command);
+        } else if (currentRuntime instanceof ApplicationDistributionRuntime distribution) {
+            command = new java.util.ArrayList<>();
+            command.add(remoteDirectory + "/app/" + distribution.scriptRelativePath());
+            command.addAll(runtimeInputs.expandArguments(distribution.programArguments(), remoteDirectory + "/inputs"));
+            executeSetupCommand(session, "chmod 700 " + PosixCommand.quote(command.getFirst()));
+            launch = "JAVA_HOME=" + PosixCommand.quote(javaHome(requireRemoteJava())) + " exec " + PosixCommand.join(command);
+        } else {
+            throw new IllegalStateException("Unsupported remote runtime: " + currentRuntime.getClass().getName());
+        }
 
         reporter.command(safeCommand(command));
 
         ClientChannel remoteChannel = openJvmChannel(session,
-                "cd " + PosixCommand.quote(remoteDirectory) + " && exec " + PosixCommand.join(command));
+                "cd " + PosixCommand.quote(remoteDirectory) + " && " + launch);
         // A command channel opening is the first confirmation that the remote JVM launch was accepted.
         state(ExecutionStatus.RUNNING, ExecutionStage.JVM, StageStatus.SUCCESS);
         state(ExecutionStatus.RUNNING, ExecutionStage.RUNNING, StageStatus.IN_PROGRESS);
@@ -356,8 +392,7 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
         }
     }
 
-    private @NotNull String remoteClasspath() {
-        JavaRuntime currentRuntime = requireRuntime();
+    private @NotNull String remoteClasspath(@NotNull JavaRuntime currentRuntime) {
         StringBuilder result = new StringBuilder();
         for (int index = 0; index < currentRuntime.classpath().size(); index++) {
             if (index > 0) {
@@ -479,8 +514,25 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
     private record UploadEntry(Path local, String remote, long size) { }
     private record UploadSummary(int files, long bytes) { }
 
-    private @NotNull JavaRuntime requireRuntime() {
-        JavaRuntime currentRuntime = runtime;
+    private static @NotNull String javaHome(@NotNull String java) {
+        int separator = java.lastIndexOf('/');
+        if (separator <= 0 || !java.endsWith("/bin/java")) {
+            throw new IllegalStateException("Remote Java executable has an unexpected path.");
+        }
+        return java.substring(0, java.length() - "/bin/java".length());
+    }
+
+    private void validateRuntimeInputs(@NotNull RemoteRuntime preparedRuntime) {
+        runtimeInputs.expandArguments(preparedRuntime.programArguments(), "/farrun-runtime-inputs");
+    }
+
+    private static @NotNull Path projectDirectory(@NotNull Project project) {
+        String basePath = project.getBasePath();
+        return basePath == null ? Path.of(".").toAbsolutePath() : Path.of(basePath);
+    }
+
+    private @NotNull RemoteRuntime requireRuntime() {
+        RemoteRuntime currentRuntime = runtime;
         if (currentRuntime == null) {
             throw new IllegalStateException("Java runtime was not prepared.");
         }
@@ -497,16 +549,16 @@ public class RemoteJavaProcessHandler extends ProcessHandler {
 
     @FunctionalInterface
     public interface RuntimeFactory {
-        JavaRuntime create(@NotNull ExecutionCancellation cancellation) throws Exception;
+        RemoteRuntime create(@NotNull ExecutionCancellation cancellation) throws Exception;
     }
 
     /** Optional richer preparation hook; retained alongside RuntimeFactory for compatibility. */
     @FunctionalInterface
     public interface ReportingRuntimeFactory extends RuntimeFactory {
-        JavaRuntime create(@NotNull ExecutionCancellation cancellation, @NotNull ConsoleReporter reporter) throws Exception;
+        RemoteRuntime create(@NotNull ExecutionCancellation cancellation, @NotNull ConsoleReporter reporter) throws Exception;
 
         @Override
-        default JavaRuntime create(@NotNull ExecutionCancellation cancellation) throws Exception {
+        default RemoteRuntime create(@NotNull ExecutionCancellation cancellation) throws Exception {
             return create(cancellation, new ConsoleReporter((text, type) -> { }));
         }
     }

@@ -3,6 +3,7 @@ package dev.farrun.run.configuration;
 import com.intellij.openapi.options.SettingsEditor;
 import com.intellij.ui.TitledSeparator;
 import com.intellij.ui.components.JBLabel;
+import com.intellij.ui.components.JBTextArea;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.FormBuilder;
 import dev.farrun.run.source.SourceConfigurationReference;
@@ -17,6 +18,7 @@ import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JList;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import java.awt.Component;
 import java.util.List;
 
@@ -27,6 +29,7 @@ public final class ConfigurationEditor extends SettingsEditor<DemoRunConfigurati
     private final JBLabel sourceStatus = new JBLabel();
     private final JComboBox<Server> server = new JComboBox<>();
     private final JBLabel serverStatus = new JBLabel();
+    private final JBTextArea runtimeFiles = new JBTextArea(4, 40);
 
     @Override
     protected void resetEditorFrom(@NotNull DemoRunConfiguration configuration) {
@@ -45,6 +48,9 @@ public final class ConfigurationEditor extends SettingsEditor<DemoRunConfigurati
         server.setModel(new DefaultComboBoxModel<>(servers.toArray(Server[]::new)));
         server.setSelectedItem(selectedServer);
         server.setEnabled(!servers.isEmpty());
+        runtimeFiles.setText(configuration.getRuntimeFiles().stream()
+                .map(mapping -> mapping.alias() + "=" + mapping.localPath())
+                .collect(java.util.stream.Collectors.joining("\n")));
 
         if (available.isEmpty()) {
             sourceStatus.setText("Create a Java Application or Gradle configuration first. It will appear here automatically.");
@@ -71,6 +77,7 @@ public final class ConfigurationEditor extends SettingsEditor<DemoRunConfigurati
     protected void applyEditorTo(@NotNull DemoRunConfiguration configuration) {
         configuration.setSourceReference((SourceConfigurationReference) sourceConfiguration.getSelectedItem());
         configuration.setServer((Server) server.getSelectedItem());
+        configuration.setRuntimeFiles(parseRuntimeFiles(runtimeFiles.getText()));
     }
 
     @Override
@@ -83,6 +90,7 @@ public final class ConfigurationEditor extends SettingsEditor<DemoRunConfigurati
         sourceConfiguration.setToolTipText("Select an existing Java Application or Gradle configuration");
         server.setRenderer(new ServerRenderer());
         server.setToolTipText("Select a globally configured SSH server");
+        runtimeFiles.setToolTipText("One mapping per line: alias=relative/or/absolute/local/file");
 
         JPanel panel = FormBuilder.createFormBuilder()
                 .addComponent(new TitledSeparator("Application"))
@@ -91,11 +99,29 @@ public final class ConfigurationEditor extends SettingsEditor<DemoRunConfigurati
                 .addComponent(new TitledSeparator("Remote server"), JBUI.scale(16))
                 .addLabeledComponent("Server", server)
                 .addComponent(serverStatus, JBUI.scale(8))
+                .addComponent(new TitledSeparator("Runtime files"), JBUI.scale(16))
+                .addComponent(new JBLabel("One mapping per line: alias=local file. Use ${farrun:alias} in program arguments."))
+                .addComponent(new JScrollPane(runtimeFiles))
                 .addComponent(new TitledSeparator("Run behavior"), JBUI.scale(16))
                 .addComponent(demoStatus)
                 .addComponentFillVertically(new JPanel(), 0)
                 .getPanel();
         return panel;
+    }
+
+    private static @NotNull List<RuntimeFileMapping> parseRuntimeFiles(@NotNull String text) {
+        List<RuntimeFileMapping> mappings = new java.util.ArrayList<>();
+        for (String line : text.lines().toList()) {
+            if (line.isBlank()) {
+                continue;
+            }
+            int separator = line.indexOf('=');
+            if (separator <= 0 || separator == line.length() - 1) {
+                throw new IllegalArgumentException("Runtime files must use alias=local file.");
+            }
+            mappings.add(new RuntimeFileMapping(line.substring(0, separator), line.substring(separator + 1)));
+        }
+        return List.copyOf(mappings);
     }
 
     private static final class SourceConfigurationRenderer extends DefaultListCellRenderer {

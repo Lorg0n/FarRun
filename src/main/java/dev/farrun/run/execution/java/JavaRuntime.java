@@ -1,5 +1,6 @@
 package dev.farrun.run.execution.java;
 
+import dev.farrun.run.execution.RemoteRuntime;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.file.Path;
@@ -12,7 +13,7 @@ public record JavaRuntime(
         @NotNull List<String> vmArguments,
         @NotNull List<String> programArguments,
         int requiredJavaMajor
-) {
+) implements RemoteRuntime {
     public JavaRuntime(
             @NotNull String mainClass,
             @NotNull List<Path> classpath,

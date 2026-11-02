@@ -2,6 +2,7 @@ package dev.farrun.run.configuration;
 
 import com.intellij.execution.configurations.RunConfigurationOptions;
 import com.intellij.openapi.components.StoredPropertyBase;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -16,12 +17,14 @@ public final class DemoRunConfigurationOptions extends RunConfigurationOptions {
     private final StoredPropertyBase<String> sourceConfigurationTypeId = string(null);
     private final StoredPropertyBase<String> sourceConfigurationName = string(null);
     private final StoredPropertyBase<String> serverId = string(null);
+    private final StoredPropertyBase<String> runtimeFiles = string("");
 
     public DemoRunConfigurationOptions() {
         sourceConfigurationId.setName("sourceConfigurationId");
         sourceConfigurationTypeId.setName("sourceConfigurationTypeId");
         sourceConfigurationName.setName("sourceConfigurationName");
         serverId.setName("serverId");
+        runtimeFiles.setName("runtimeFiles");
     }
 
     public @Nullable String getSourceConfigurationId() {
@@ -54,5 +57,14 @@ public final class DemoRunConfigurationOptions extends RunConfigurationOptions {
 
     public void setServerId(@Nullable String value) {
         serverId.setValue(this, value);
+    }
+
+    public @NotNull String getRuntimeFiles() {
+        String value = runtimeFiles.getValue(this);
+        return value == null ? "" : value;
+    }
+
+    public void setRuntimeFiles(@NotNull String value) {
+        runtimeFiles.setValue(this, value);
     }
 }

@@ -18,6 +18,7 @@ import dev.farrun.run.execution.console.MessageProcessHandler;
 import dev.farrun.run.execution.strategy.ExecutionStrategy;
 import dev.farrun.run.execution.strategy.GradleStrategy;
 import dev.farrun.run.execution.strategy.JavaApplicationStrategy;
+import dev.farrun.run.configuration.RuntimeFileMapping;
 import dev.farrun.run.execution.remote.RemoteJavaProcessHandler;
 import dev.farrun.run.execution.ui.ExecutionSession;
 import dev.farrun.run.execution.ui.FarRunConsoleView;
@@ -26,20 +27,30 @@ import dev.farrun.run.execution.ui.ExecutionStatus;
 import dev.farrun.run.execution.console.FarRunConsoleBridge;
 import org.jetbrains.annotations.NotNull;
 
+import java.nio.file.Path;
+import java.util.List;
+
 /** Selects a source-specific execution strategy while preserving one FarRun user flow. */
 public final class FarRunRunState implements RunProfileState {
     private final @NotNull Project project;
     private final @NotNull SourceConfigurationReference sourceReference;
     private final Server server;
+    private final @NotNull RuntimeInputs runtimeInputs;
 
     public FarRunRunState(
             @NotNull Project project,
             @NotNull SourceConfigurationReference sourceReference,
-            Server server
+            Server server,
+            @NotNull List<RuntimeFileMapping> runtimeFiles
     ) {
         this.project = project;
         this.sourceReference = sourceReference;
         this.server = server;
+        String basePath = project.getBasePath();
+        if (basePath == null) {
+            throw new IllegalArgumentException("FarRun requires a project directory for runtime inputs.");
+        }
+        runtimeInputs = new RuntimeInputs(Path.of(basePath), runtimeFiles);
     }
 
     @Override
@@ -77,7 +88,7 @@ public final class FarRunRunState implements RunProfileState {
                         "[FarRun] Select an SSH server before running Java Application."
                 ), 1);
             }
-            return new JavaApplicationStrategy(project, application, server);
+            return new JavaApplicationStrategy(project, application, server, runtimeInputs);
         }
         if (source instanceof org.jetbrains.plugins.gradle.service.execution.GradleRunConfiguration) {
             if (server == null) {
@@ -86,7 +97,7 @@ public final class FarRunRunState implements RunProfileState {
                 ), 1);
             }
             return new GradleStrategy(project,
-                    (org.jetbrains.plugins.gradle.service.execution.GradleRunConfiguration) source, server);
+                    (org.jetbrains.plugins.gradle.service.execution.GradleRunConfiguration) source, server, runtimeInputs);
         }
         return () -> new MessageProcessHandler(java.util.List.of(
                 "[FarRun] Unsupported source configuration type."

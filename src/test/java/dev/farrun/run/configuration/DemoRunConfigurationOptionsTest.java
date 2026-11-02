@@ -39,4 +39,17 @@ class DemoRunConfigurationOptionsTest {
     void rejectsAnIncompleteSourceReference() {
         assertNull(SourceConfigurationReference.from("id", "Application", null));
     }
+
+    @Test
+    void preservesRuntimeFileStorageDuringXmlSerialization() {
+        DemoRunConfigurationOptions options = new DemoRunConfigurationOptions();
+        options.setRuntimeFiles("config\tconfig/app.properties");
+
+        DemoRunConfigurationOptions restored = XmlSerializer.deserialize(
+                XmlSerializer.serialize(options),
+                DemoRunConfigurationOptions.class
+        );
+
+        assertEquals("config\tconfig/app.properties", restored.getRuntimeFiles());
+    }
 }
