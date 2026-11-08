@@ -4,6 +4,8 @@
   <img src="src/main/resources/icons/farrun.svg" width="96" alt="FarRun logo">
 </p>
 
+[![JetBrains Marketplace](https://img.shields.io/jetbrains/plugin/v/35664-farrun.svg?label=JetBrains%20Marketplace)](https://plugins.jetbrains.com/plugin/35664-farrun) [![Java 25](https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/25/) [![Gradle 9.8](https://img.shields.io/badge/Gradle-9.8-02303A?logo=gradle&logoColor=white)](https://gradle.org/) [![IntelliJ IDEA 2026.2+](https://img.shields.io/badge/IntelliJ%20IDEA-2026.2%2B-000000?logo=intellijidea&logoColor=white)](https://www.jetbrains.com/idea/)
+
 **FarRun** is an IntelliJ IDEA plugin that builds a Java application locally and runs it on a selected Linux server over SSH. It keeps the familiar IntelliJ Run workflow while making remote execution visible: connection, Java runtime, upload, JVM lifecycle, application output, and failures all remain in the standard Run tool window.
 
 ## What it does
