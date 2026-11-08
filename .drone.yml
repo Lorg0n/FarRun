@@ -13,7 +13,8 @@ steps:
     image: eclipse-temurin:25-jdk
     commands:
       - test "$DRONE_TAG" = "v$(sed -n 's/^pluginVersion=//p' gradle.properties)"
-      - ./gradlew test verifyPlugin buildPlugin
+      - timeout --foreground 30m ./gradlew --no-daemon --console=plain --stacktrace -Dorg.gradle.internal.http.connectionTimeout=30000 -Dorg.gradle.internal.http.socketTimeout=120000 test verifyPlugin buildPlugin
+      - ls -lh build/distributions
 
   - name: publish-to-jetbrains-marketplace
     image: eclipse-temurin:25-jdk
@@ -21,6 +22,6 @@ steps:
       PUBLISH_TOKEN:
         from_secret: JETBRAINS_MARKETPLACE_TOKEN
     commands:
-      - ./gradlew publishPlugin
+      - timeout --foreground 20m ./gradlew --no-daemon --console=plain --stacktrace -Dorg.gradle.internal.http.connectionTimeout=30000 -Dorg.gradle.internal.http.socketTimeout=120000 publishPlugin
     depends_on:
       - verify-and-package
